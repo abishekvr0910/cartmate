@@ -1,4 +1,12 @@
-# Progress tracker — 2026-10-14
+# Progress tracker — 2026-10-15
+
+## Completed: Git repository initialized & clean deployment packaging (2026-10-15)
+
+* **Git Repository Initialized & Clean:** Initial commit `abf15ec4d0a947ccb72ce613ba936e7026eb95e8` created on branch `main` with author `Abishek <abivr0910@gmail.com>`. All application source files, Docker files, ops runbooks, test suites, and Android project files are tracked. `CODEX_WORK_DIRECTORY.md` is preserved and ignored. Working tree is clean (`nothing to commit, working tree clean`).
+* **Verified Baseline:** 12 ops pilot preflight tests passed (1.42s), all 9 diagnostic probes exit 0, frontend `oxlint` 0 errors / 0 warnings (190ms), `tsc -b && vite build` clean in 3.12s. Distinct test matrix reconciled at exactly 246 tests passed (172 + 12 + 16 + 4 + 42) + 9 diagnostic probes.
+* **AWS Status:** Founder waiting for AWS ~24-hour verification hold to clear. Once cleared, proceed with EC2 `t3.medium` launch in `eu-central-1` (Frankfurt), Elastic IP allocation, and DNS record setup per `ops/EC2_STAGING_RUNBOOK.md`.
+* **Restore Drill:** Rehearsal drill strictly targets scratch database `./ops/backups/restore_drill_NEW_UNIQUE_NAME.db`, never `/app/data/pilot_live.db`.
+* **Integrity & Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` untouched; H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
 
 ## Completed: G0 clean test baseline verified (2026-10-14)
 

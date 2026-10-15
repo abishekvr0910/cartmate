@@ -1,5 +1,11 @@
 # CartMate Launch Readiness
 
+**Git repository & packaging readiness (2026-10-15):** Initial Git commit `abf15ec4d0a947ccb72ce613ba936e7026eb95e8` created on branch `main` with author `Abishek <abivr0910@gmail.com>`. All application source files, Docker files, ops runbooks, test suites, and Android project files are tracked. `CODEX_WORK_DIRECTORY.md` is preserved and ignored. Working tree is clean (`nothing to commit, working tree clean`).
+* **Verified Baseline:** 12 ops pilot preflight tests passed (1.42s), all 9 diagnostic probes exit 0, frontend `oxlint` 0 errors / 0 warnings (190ms), `tsc -b && vite build` clean in 3.12s. Distinct test matrix reconciled at exactly 246 tests passed (172 + 12 + 16 + 4 + 42) + 9 diagnostic probes.
+* **AWS Status:** Founder waiting for AWS ~24-hour verification hold to clear. Once cleared, proceed with EC2 `t3.medium` launch in `eu-central-1` (Frankfurt), Elastic IP allocation, and DNS record setup per `ops/EC2_STAGING_RUNBOOK.md`.
+* **Restore Drill:** Rehearsal drill strictly targets scratch database `./ops/backups/restore_drill_NEW_UNIQUE_NAME.db`, never `/app/data/pilot_live.db`.
+* **Integrity & Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` untouched; H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
+
 **Full baseline verification (2026-10-14, G0 complete — 246 distinct tests passed, 9 probes exit 0):** On the clean reviewed tree with feature 003 activity-first outings, quiet trip-tab activity cues, and unverified venue safety claim removals, the entire test surface was rerun and verified on fresh disposable databases and isolated harnesses (passing tests is contract evidence, not 100% code coverage):
 * **Backend + Disaster Recovery pytest:** **172 passed** in 38.40s (`backend/` + `ops/test_disaster_recovery.py`; includes the 13 adversarial review scenarios in `backend/test_private_pilot_review.py`).
 * **Ops Pilot Preflight:** **12 passed** in 1.22s (`ops/test_pilot_preflight.py`).
