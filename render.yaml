@@ -1,0 +1,41 @@
+# Closed staging rehearsal only. Do not clone this service for public launch.
+services:
+  - type: web
+    name: cartmate-staging
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    region: frankfurt
+    numInstances: 1
+    autoDeployTrigger: 'off'
+    healthCheckPath: /api/health
+    disk:
+      name: cartmate-staging-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: CARTMATE_ENV
+        value: staging
+      - key: CARTMATE_DEPLOYMENT
+        value: '1'
+      - key: CARTMATE_DATABASE_PATH
+        value: /var/data/cartmate.db
+      - key: CARTMATE_DEFAULT_REGION
+        value: silesia
+      - key: SESSION_TTL_HOURS
+        value: '24'
+      - key: CARTMATE_PILOT_INVITES_ENABLED
+        value: '1'
+      - key: CARTMATE_MANUAL_AGE_PILOT_ENABLED
+        value: '0'
+      - key: OTP_PROVIDER
+        sync: false
+      - key: SOS_PROVIDER
+        value: disabled
+      - key: JEV_MODE
+        value: disabled
+      - key: CARTMATE_STAGING_ALLOWED_PHONES
+        sync: false
+      - key: SOS_WEBHOOK_SECRET
+        generateValue: true

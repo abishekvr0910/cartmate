@@ -1,0 +1,8 @@
+# Code and verification standards
+
+- Keep Python/FastAPI/Pydantic v2 and React/TypeScript conventions already used in the repository. Put request/response contracts in `backend/models.py` or a clearly bounded module; mirror them in `frontend/src/types.ts` and `frontend/src/api.ts`.
+- Validate inputs and enforce authentication, ownership, region, block and age rules on the server before mutation. Frontend disabling is explanatory, not authority. New pilot credentials must be cryptographically random, short-lived, single-use, rate-limited, persisted safely and revocable; never log raw codes or fabricate SMS provenance.
+- Keep SQLite writes transactional and restart-safe. A process restart may invalidate a pending challenge safely, but must not resurrect a revoked session or adult approval. Use one app worker for SQLite/in-process WebSocket state until architecture changes deliberately.
+- Do not edit or test against `backend/cartmate.db`. Use a unique disposable `CARTMATE_DATABASE_PATH`. Ignore generated databases, `.env` files, QA artifacts, keys and backups. Never print secrets or identity material in docs/test output.
+- After a feature slice, run relevant backend pytest from `backend/`, frontend `npm run build` and `npm run lint`, and browser suites per `qa/README.md`. The development browser suite requires a loopback disposable database and `CARTMATE_E2E_ISOLATED=1`; the no-demo suite is separate. Test negative authorization and failure paths, not only a happy UI path.
+- Distinguish local tests, hosted private-phone rehearsal, independent accessibility/security review and actual user feedback. None substitutes for another. Record exact observed counts and date, never carried-over claims.

@@ -1,0 +1,30 @@
+# CartMate staging rehearsal (not a pilot deployment)
+
+**PARKED PAID PATH (2026-10-01):** The founder currently wants a zero-new-cost, private website friend test. Do not deploy this Render/carrier configuration for that test or use console OTP as a shortcut. The active handoff is [`../GEMINI_HANDOFF.md`](../GEMINI_HANDOFF.md); the no-cost access/auth work is not implemented.
+
+**2026-09-30 hold:** no real age-assurance provider has been selected. A staging-only, operator-witnessed adult check exists but is off until its procedure is reviewed and explicitly enabled; production stays closed. Local automated suites have passed, but they do not substitute for a hosted Render/carrier/offsite rehearsal. Use `REHEARSAL_EVIDENCE.md` to record each real gate without secrets. The checkout's `backend/venv` lacks WebSocket support; use a clean install of pinned `backend/requirements.txt` or a verified WebSocket-capable interpreter for local realtime tests.
+
+Render.com is the approved staging target. See [`RENDER.md`](RENDER.md) for the provider-specific Blueprint, private secret prompts, same-origin React/API/WebSocket deployment, and operational gates.
+
+Staging must have its own host, HTTPS origin, persistent SQLite volume, secrets, test accounts, and operator. Never copy production data or point it at `backend/cartmate.db`. Run one backend replica only; the app still has in-process state and SQLite storage.
+
+## Configuration
+
+Use [`env.example`](env.example) as a key checklist, not as a runnable configuration. Store actual values in Render's secret environment, outside this repository. Set `CARTMATE_ENV=staging` and `CARTMATE_DEPLOYMENT=1` so startup rejects implicit development mode. `CARTMATE_DATABASE_PATH` must be `/var/data/cartmate.db` on the mounted disk. React, API, and WebSockets share one origin, so `CARTMATE_CORS_ALLOWED_ORIGINS` can remain empty; add only exact HTTPS origins if a separate client is later approved. Choose an eligible carrier-backed OTP provider (`twilio` or `smsapi`) and configure its secrets privately; never use the console provider in staging. SMSAPI currently says it does not serve private individuals, so an individual founder must not select it without an eligible organization. The deployed staging server refuses to start without `CARTMATE_STAGING_ALLOWED_PHONES`, and unlisted numbers cannot request or use OTP codes. Discovery requires an authenticated account. A public Render URL still exists; an edge access gate is a separate decision.
+
+Set `SOS_PROVIDER=disabled`. The backend ignores any imported `emergency_contact_verified` flag in staging/production and returns direct `tel:112` fallback rather than dispatching SMS. Do not trigger a real emergency response during testing. The delivery-receipt endpoint is inactive while SOS SMS is disabled. A unique `SOS_WEBHOOK_SECRET` is still required by the deployment startup guard, even though the endpoint is inactive; this leaves no weak default if the mode changes later.
+
+The Docker image builds React with `npm ci && npm run build` and serves it with one FastAPI worker over Render HTTPS, including `/api` and `/ws` on the same origin. Render provides the TLS endpoint and secret environment. Automated offsite backup, migration, and rollback orchestration are not yet in place; do not connect a real pilot cohort on the basis of a successful deploy alone.
+
+## Rehearsal gates
+
+1. Start on a **clean**, isolated database. Confirm `/api/health` reports `staging`, `users: 0`, and `sos: disabled`. Run the read-only probe with `python staging/preflight.py --base-url https://YOUR-STAGING-ORIGIN`. It checks the Silesia region, missing/demo credential denial, and `/api/ready` without sending SMS. Add `--require-ready` only after the closed-pilot operational prerequisites, including an active pilot-admitted human moderator, approved adult attestations, and SMS gateway, are configured. Women-only outings remain unavailable without separate genuine identity verification. Do not route a pilot to a 503-ready environment, and do not treat a 200-ready response as human release approval.
+2. Confirm `token_jakub` and every other demo token receive 401, user-switching is denied, private endpoints reject missing/invalid tokens, and an ordinary user cannot access the moderation queue.
+3. With an approved controlled Polish number and configured SMS gateway, run `python staging/otp_rehearsal.py --base-url https://YOUR-STAGING-ORIGIN --test-phone +48XXXXXXXXX --yes-send-one-sms` from the repository root. The script checks the staging environment before requesting one SMS, prompts privately for the received code, and verifies wrong-code denial, one-time use, ordinary-user authorization, and logout revocation. Do not log OTPs or paste credentials into tickets/chat. This live carrier step cannot be completed without provider credentials, a test number, and a real HTTPS staging origin.
+4. Confirm SOS UI and API provide direct 112 calling only; no contact SMS is sent or reported delivered. Never test the fallback by placing a real 112 call.
+5. Run the independent multi-user browser suite once Gemini provides staging-compatible accounts/fixtures. The current `qa/` suite is local-development-only and refuses staging URLs.
+6. Exercise encrypted, access-restricted, offsite backup and an offline restore on staging; measure recovery time. Verify operator escalation, log redaction, dependency scanning, and hosted CI before invitations.
+
+The cold-process automated contract tests in `backend/test_staging_rehearsal.py` cover fail-closed configuration and session behavior without sending SMS. They are not evidence that a carrier message was delivered or that an actual hosted staging environment works.
+
+An isolated local HTTP smoke run on 2026-09-27 confirmed staging mode starts with zero demo users and SMS SOS disabled, blocks `/api/ready` with 503, rejects a demo token with 401, and returns 503 for an OTP request without gateway credentials. The generated local test database was removed afterward.

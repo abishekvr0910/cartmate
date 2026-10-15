@@ -1,0 +1,48 @@
+services:
+  cartmate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - CARTMATE_ENV=staging
+      - CARTMATE_DEPLOYMENT=1
+      - CARTMATE_OPERATOR_PILOT_ENABLED=1
+      - CARTMATE_MANUAL_AGE_PILOT_ENABLED=1
+      - CARTMATE_DATABASE_PATH=/app/data/pilot_live.db
+      - CARTMATE_CORS_ALLOWED_ORIGINS=https://${DOMAIN:?Set DOMAIN in .env},https://localhost
+      - CARTMATE_STAGING_ALLOWED_PHONES=${CARTMATE_STAGING_ALLOWED_PHONES:?Set the approved +48 phone allowlist in .env}
+      - CARTMATE_MODERATOR_USER_IDS=${CARTMATE_MODERATOR_USER_IDS:-}
+      - SOS_WEBHOOK_SECRET=${SOS_WEBHOOK_SECRET:?Set a unique SOS_WEBHOOK_SECRET in .env}
+      - SOS_PROVIDER=disabled
+      - OTP_PROVIDER=console
+      - JEV_MODE=disabled
+      - SESSION_TTL_HOURS=24
+      - PORT=8000
+    volumes:
+      - cartmate-data:/app/data
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    command: >
+      caddy reverse-proxy
+      --from https://${DOMAIN:?Set DOMAIN in .env}
+      --to http://cartmate:8000
+
+volumes:
+  cartmate-data:
+  caddy-data:
+  caddy-config:

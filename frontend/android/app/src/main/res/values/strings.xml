@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CartMate</string>
+    <string name="title_activity_main">CartMate</string>
+    <string name="package_name">pl.cartmate.app</string>
+    <string name="custom_url_scheme">pl.cartmate.app</string>
+</resources>

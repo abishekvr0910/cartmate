@@ -1,0 +1,9 @@
+node_modules/
+test-results/
+playwright-report/
+*.db
+*.db-wal
+*.db-shm
+.staging_otp_capture.json
+staging_no_demo_test.db*
+

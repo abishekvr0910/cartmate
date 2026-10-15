@@ -1,0 +1,9 @@
+# UI context
+
+The current interface is a dark, mobile-first social outings app: deep navy surfaces (`#0b0f19`, `#0f172a`), emerald/teal action accents, amber visible-focus accents, Lucide icons, a five-item bottom navigation and human-first nearby cards. `frontend/src/index.css` and the components are the source for actual values; do not replace the design system to finish auth.
+
+The activity-first UI now starts with conversation, walk, study, fitness and food alongside shopping. The creator defaults to `social`, asks for a public place and explains that opening hours, access and gym membership are not verified. Discovery chips and card labels use the shared category catalog and PL/EN/UK/RU strings. The plan form separates date/time from a concrete public meeting point; the server rejects the generic placeholder for new categories. Mutual follow-up is framed as an independent, private choice to meet again, not "shopping buddies". Avoid adding a public loneliness label or pressure to keep meeting.
+
+For the friend pilot, the first screen must explain honestly whether access is blocked, pending an operator check, or usable. If a new no-SMS admission mode is implemented, label it as an in-person/operator-issued code; do not call it SMS verification, identity verification, mObywatel API verification, or a 24/7-monitored safety service. Keep a clear route to leave/report and direct 112 guidance.
+
+Maintain readable Polish copy, the existing PL/EN/UK/RU localization model, safe-area padding, 320px reflow, ≥44px touch targets where practical, semantic labels, visible keyboard focus, focus-managed dialogs and reduced-motion behavior. Existing automated checks cover selected controls; a real screen-reader, zoom and low-vision review is still open. Avoid adding social pressure, fabricated popularity, compulsory ratings or punitive streak mechanics.

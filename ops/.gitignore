@@ -1,0 +1,6 @@
+backups/
+cartmate_dr_test_*/
+__pycache__/
+*.db
+*.db-wal
+*.db-shm

@@ -1,0 +1,89 @@
+# CartMate — archived QA takeover and Gemini handoff (2026-09-29)
+
+Historical record only. For current instructions, read `GEMINI_HANDOFF.md` and `context/progress-tracker.md`; the decisions, test counts, Git state, and paid-service assumptions below have been superseded.
+
+**Updated: 2026-09-29.** `LAUNCH_READINESS.md` is the release source of truth. This is a scoped task handoff, not launch approval.
+
+**Next implementation handoff:** [NEXT_MODEL_EXECUTION_PLAN.md](NEXT_MODEL_EXECUTION_PLAN.md) is the current completion backlog. A fresh review reproduced all existing local suites but also reproduced privacy, group-blocking, geographic and frontend/API defects that those suites miss. Start with E00/E01, then E02's closed-by-default adult admission. Findings, files, acceptance tests and founder dependencies U01–U07 are recorded there. No application fixes were made during this planning pass. This new backlog takes precedence over historical statements that these boundaries were fully verified; one writer owns the checkout until an isolated Git workflow exists.
+
+**Approved product direction, not launch approval:** [PRODUCT_NARRATIVE_AND_ROLLOUT.md](PRODUCT_NARRATIVE_AND_ROLLOUT.md) records the founder's web-first Poland-information / **18+ invite-only Katowice/GZM live-pilot** decision. [HUMANE_PRODUCT_PLAN.md](HUMANE_PRODUCT_PLAN.md) contains the source-linked research. The age-assurance method still needs qualified review and there is **no server age gate** in code. Do not implement a public streak or Jev-driven match/safety decision ahead of age, moderation, privacy, and hosted release gates.
+
+## Where the product stands
+
+CartMate is a working **local web MVP for a closed Katowice/GZM pilot**. It is not deployed or approved for real users; a Poland-wide informational surface is planned, but nationwide live meetups are not approved. React/TypeScript is the user interface; FastAPI/SQLite provides authentication, durable outings, plans, chat, moderation, and safety boundaries. Capacitor is a starter configuration only, not a released native app.
+
+Implemented since the previous QA handoff:
+
+- Deployed staging/production accounts must prove control of a Polish phone number by SMS OTP. The backend persists `phone_verified_at` before issuing a session; it is private account data, absent from public profiles.
+- An SMS-confirmed Bronze account may publish an **ordinary** outing inside the Silesia boundary. An account lacking OTP provenance receives HTTP 403. SMS does **not** verify a person's identity.
+- Women-only/SafeHaven outing creation still requires genuine ID verification. No ID provider is integrated, so this feature remains unavailable in deployed environments. The Create Outing form explains the distinction and disables the women-only switch for unverified users.
+- Phone-only accounts no longer receive a phone-derived fake email in their profile; the internal non-deliverable placeholder is hidden in the UI.
+- `/api/ready` reports the closed-Silesia scope and absent ID capability. It checks operational configuration; `"ready"` is **not** human release approval.
+
+Other implemented core journeys include discovery, join requests, host acceptance, explicit mutual plan confirmation, trip chat, cancellation, blocking/reporting, human moderation queue, and 50/50 cost estimates. SOS SMS is disabled; the approved pilot fallback is direct `tel:112` calling. MapLibre maps and manual BLIK contact copy exist; automated payments, live Overpass POIs, and autonomous Jev decisions do not.
+
+## Evidence and its limits
+
+- **108/108 backend pytest cases passed** on a disposable development-fixture database, including deployed-mode OTP/publishing policy, women-only denial, outsider object-authorization checks, one-use invite admission, PIN-shielded SOS WebSocket contract, durable six-digit OTP recovery/abuse budgets, post-block contact redaction, and log-filter checks. The suite relies on development-only demo/OTP fixtures; separate deployed-mode subprocess checks remain essential.
+- The current **32/32 Playwright cases passed** on Desktop Chromium and Pixel 7 Mobile, including a 320px overflow check, trip-dialog focus/neutral-choice checks, and actual WebSocket-frame assertions for zero-refresh plan acceptance, chat, check-in/PIN handshake, shared-item balance, cancellation, and SOS across two participants. The separate no-demo staging-style suite passes **4/4** against the production bundle and a capture-only OTP harness, including invite admission/replay and no fabricated portraits/ratings/likes: **36/36 local cases across the two suites**. The development suite uses demo sessions and is not carrier or hosted staging evidence.
+- React typecheck/build and oxlint passed; Vite warns about the large optional MapLibre bundle.
+- The sample backup/restore drill passes 2/2 locally, but encrypted offsite backup and a hosted human-operated restore are unproven.
+- No Render deployment, hosted CI run, real SMSAPI carrier delivery, approved test handset, or live-user pilot has been observed in this checkout. Do not translate local passes into a public-launch claim.
+
+## 2026-09-29 trust-sprint integration for Gemini
+
+Later on 2026-09-29, Codex also closed a completion-consent defect. `frontend/src/components/ActiveTripHUD.tsx` now defaults meet-again to no answer and lets participants complete an outing without rating someone; the four locale strings describe these choices honestly. `backend/main.py` counts a review-first completion once even when a later follow-up call fails, and `frontend/src/App.tsx` no longer misreports completion failure if only its secondary feed refresh fails. `frontend/src/hooks/useDialogFocus.ts` adds focus containment/Escape/focus restoration to six trip dialogs, which now have accessible names and labeled form controls; `App.tsx` updates the HTML document language at runtime. `qa/tests/accessibility.spec.ts` tests dialog focus, Escape return, neutral meet-again choices, and the no-review option on desktop/mobile. The current local matrix is **108/108 backend, 32/32 development browser, 4/4 no-demo browser**, plus clean frontend build/lint. Remaining independent review: broader screen reader/zoom checks, session storage/CSP/CSRF design, cross-request review/follow-up recovery, moderation alerting, and hosted/operator gates.
+
+The moderator's `warn` action remains an internal record, **not** a delivered user warning; its button now says this explicitly. Report submission copy now says the queue is not monitored 24/7 and directs immediate danger to 112. Build/lint and the no-demo production-bundle suite were rerun after these copy changes. A real notification channel, named human coverage, and an escalation SLA are still open.
+
+Codex changed `backend/storage.py` (migration v6, salted slow-digest OTP challenges, atomic per-phone and invite-level abuse budgets), `backend/auth_providers.py` (six-digit OTPs and no raw gateway/recipient logging), `backend/models.py` and `backend/main.py` (no contact phone in shared trip events or after a block), `backend/sanitizer.py` (explicit phone/code redaction), and the React OTP and manual BLIK copy flows. The BLIK button now fetches a participant-authorized trip at click time rather than trusting a phone field in a shared WebSocket frame. `frontend/index.html` no longer calls SMS-confirmed neighbors identity-verified. Tests and the no-demo QA harness were updated for six digits and durable OTP tables.
+
+Exact current local result: `python -m pytest -q` **108/108** on a disposable development database, `npm run build` and `npm run lint` pass, `qa/npm test` **32/32** on a verified fresh-port disposable backend, and `qa/npm run test:no-demo` **4/4** against capture-only staging-like service. The local sample-schema backup/restore drill passes **2/2**, but it does not exercise every real table or hosted recovery. The earlier default-port browser attempt reached an older local service and is not valid evidence; use fresh ports and verify the backend process/seeded pings before repeating the development suite. No real carrier or hosted deployment was tested.
+
+An early exploratory backend run touched the existing `backend/cartmate.db`. It was deliberately preserved rather than reset; do not deploy or treat it as a clean staging database. The final backend evidence came from a fresh disposable database.
+
+## Local environment pitfalls (verified 2026-09-29, post-handoff re-review; RESOLVED same day)
+
+Resolution details, per-item verification, and the record of the defective CI smoke step are in [CODEX_FIX_HANDOFF.md](CODEX_FIX_HANDOFF.md) ("Item status" table — treat as authoritative).
+
+- ~~`backend/venv` in this checkout is incomplete~~ — still true of the venv itself, but the interpreter guidance and disposable-DB discipline are now documented in `cartmate_engineering_handoff_codex.md` §4 ("Local verification on this machine"): use the Hermes agent venv (`C:/Users/moham/AppData/Local/hermes/hermes-agent/venv/Scripts/python`) locally; CI is unaffected (setup-python installs from `requirements.txt`).
+- ~~**`backend/requirements.txt` pins plain `uvicorn==0.41.0` without `websockets`/`wsproto`**~~ — **FIXED 2026-09-29:** now `uvicorn[standard]==0.41.0`. Clean-venv verification: `websockets` 17.1 importable; local server serves WS upgrades. CI additionally boots the built Docker image and asserts the WS handshake (invalid ticket must yield HTTP 403 — 404 would mean a missing WS library regression). The smoke container requires `CARTMATE_STAGING_ALLOWED_PHONES` to boot staging mode; the initial CI step was defective (missing that env var; bogus `ws.recv()` expectation) and was corrected and verified by Hermes on 2026-09-29.
+- ~~The conftest/reload asymmetry for `host_checked_in`~~ — **FIXED 2026-09-29:** `backend/conftest.py` autouse fixture now sets `trip.host_checked_in = True`, and the `database.py` non-production reload block sets `tdata["host_checked_in"] = True` for `trip_makro_01`. The full suite now passes **108/108 against both a fresh disposable DB and the live `backend/cartmate.db`** (the live-DB PIN rate-limit failure is gone). The live DB remains preserved and still must not be used as a deployment source.
+
+Best independent next review: inspect migration v6/OTP concurrency and production logging-handler coverage, then test the block/contact policy after restart and across active WebSockets. Do not restore phone numbers to shared trip broadcasts to make the UI pass. Separately, the release board still requires a safer browser session design, privacy retention/export/erasure policy and implementation, moderator alerts with named human coverage, full accessibility review, hosted CI/Render rehearsal, SMSAPI delivery/outage evidence, and encrypted offsite recovery.
+
+## No-demo publisher journey completed locally; remaining QA work
+
+Codex completed the interrupted `qa/tests/no-demo-publishing.spec.ts` and `qa/staging_harness.py` work while Gemini was offline. The harness now uses a fresh temporary SQLite database, supported `get_db_connection(storage.db_path)`, transactional foreign-key-safe reset, and a capture-only OTP adapter without logging codes. The no-demo journey runs through `npm run test:no-demo` and passes on desktop and mobile. The default demo-session smoke suite is deliberately separate (`npm test`). CI now runs both suites separately. This is **local staging-style evidence**, not real SMSAPI delivery or hosted Render verification.
+
+The no-demo run exposed a production React integration defect: `fetchAllUsers()` omitted the bearer header required by deployed discovery, leaving the second account's feed empty even while the API contained the outing. Codex fixed `frontend/src/api.ts` and proved the two-account browser journey. The zero-refresh QA slice is also complete locally: `qa/tests/multi-user-trip.spec.ts` observes actual WebSocket frames and DOM updates for plan acceptance, chat, check-in/PIN handshake, shared-item balance, cancellation, and SOS without reloading. That work exposed a second defect: the SOS broadcast used an alert object where the React listener expected a trip. `backend/main.py` now broadcasts a PIN-shielded trip DTO and participant check-in/PIN/ledger updates; `frontend/src/App.tsx` keeps the trip subscription alive across tabs, and the HUD no longer masks partner updates with stale local state. Next independent QA slices are server-restart recovery and a deeper screen-reader/zoom/reduced-motion review; real-carrier rehearsal remains separate on hosted HTTPS staging.
+
+The finished browser slice runs against the production React bundle and an isolated loopback backend with staging-like deployment guards. It uses a fresh disposable SQLite database, allowlisted test-only `+48` numbers, and a capture-only OTP adapter: no real SMS, OTP in ordinary API responses, hardcoded bypass, or demo tokens. Because this checkout has no Git metadata, future parallel agents should use a separate copy/patch rather than writing the same directory at once.
+
+Acceptance criteria for the first QA slice:
+
+1. An allowlisted phone completes OTP, and the browser sees the ordinary outing form rather than the former Bronze verification wall.
+2. That account publishes an ordinary outing at a Silesian public venue; another authenticated browser discovers it. Assert the resulting public API/DOM does not expose phone, email, emergency contact, or `phone_verified_at`.
+3. The women-only switch is visibly unavailable without genuine ID; a direct `women_only: true` API request returns HTTP 403. Unlisted numbers cannot request OTP. Separately verify a controlled session lacking phone OTP provenance cannot publish; never create a production bypass to make this test possible.
+4. Tests fail on missing controls or unexpected responses—no conditional skips or silent fallbacks. Run on desktop and mobile and report exact commands, environment, pass/fail counts, and any fixture limitations.
+
+The **zero-refresh** two-browser WebSocket slice is now complete locally. A browser-level server-restart recovery path remains open. Once a real HTTPS Render staging host, SMSAPI secrets, and an approved handset exist, coordinate a **separate** live-carrier rehearsal using `staging/otp_rehearsal.py`; never paste credentials or OTPs into docs, logs, or chat.
+
+## Still blocking an invited pilot
+
+- Founder names an accountable human moderator/on-call owner and, with a qualified reviewer, approves the assurance method and appeal/data policy for the **already approved 18+ eligibility rule**, pilot cohort, retention/privacy notice, and incident/rollback ownership.
+- Operator creates the private repository and hosted Render staging service with a persistent disk and private SMSAPI credentials, then demonstrates real OTP delivery/outage behavior and `/api/ready` under actual configuration.
+- Independent authorization, UI truthfulness, accessibility (keyboard, focus, screen reader, zoom, reduced motion, small phones), hosted CI/Docker, and encrypted offsite backup/restore reviews are completed.
+- A qualified Poland/EU privacy/platform review is obtained before real invitations. Future ID verification and SMS-to-emergency-contact consent are separate projects; neither is needed to pretend the pilot's disabled features exist.
+
+The fastest useful independent QA contribution now is a deployed-mode age/region denial matrix, server-restart recovery browser check, and accessibility review. A truthful Poland-wide information page has a separate gate; do not spend this sprint on **nationwide live-meetup expansion**, native store packaging, automated BLIK, Overpass, or cosmetic test-count increases while launch gates remain open.
+
+## 2026-09-28 integration update: closed-pilot admission
+
+Codex added a production-mandatory, server-enforced invite gate; `render.yaml` enables the same policy on staging. The code lives in `backend/storage.py` (migration v5, SHA-256 code hashes, atomic single-use redemption), `backend/main.py` (OTP request/registration/login and session checks), `frontend/src/components/AuthModal.tsx` (runtime invitation field), and `ops/pilot_invites.py` (operator issue/revoke CLI). Tests are in `backend/test_pilot_invites.py` and the closed-pilot case in `qa/tests/no-demo-publishing.spec.ts`; the local harness issues test-only codes on its temporary database. The staging handset allowlist remains separate. Existing accounts are **not** silently admitted; this is deliberately fail-closed and requires a clean deployment or reviewed migration plan.
+
+Next QA owner: the zero-refresh two-browser WebSocket assertion is complete; add a browser/server-restart recovery check and focused invite failure cases (expired/revoked/racing claims) without creating a production test endpoint. Do not claim hosted SMS delivery from the capture-only harness. Before real invitations, an operator must rehearse code issuance/redemption/revocation on Render with the approved handset, verify moderator access for an invited and allowlisted account, and preserve private codes outside tickets and logs.
+
+## 2026-09-28 frontend review update
+
+Codex completed a local UX-truthfulness and responsive pass. The score and prioritized visual work are in [FRONTEND_UX_REVIEW.md](FRONTEND_UX_REVIEW.md). The code changes remove simulated social actions and unbacked reputation, put real outings first, use initials instead of unrelated stock portraits, improve focus/touch/reduced-motion behavior, and give desktop discovery a two-column layout. The 320px check is automated, but there has been no independent screen-reader or user study. If Gemini resumes, the safest independent contribution is a **read-only accessibility and localization review** or browser/server-restart recovery check in a separate copy; avoid writing concurrently into this checkout, which has no Git metadata.
