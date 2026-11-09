@@ -397,3 +397,120 @@ export interface SessionInfoSchema {
   expires_at?: string | null;
   is_revoked: boolean;
 }
+
+// --- Micro-Pods & Third Places Types ---
+
+export interface ActivityTemplate {
+  code: string;
+  name: string;
+  default_duration_min: number;
+  structure: string;
+  default_min_participants: number;
+  default_max_participants: number;
+  default_spend_expectation: string;
+  sort_order: number;
+  is_active: number;
+}
+
+export interface ThirdPlace {
+  id: number;
+  slug: string;
+  name: string;
+  kind: string;
+  city: string;
+  district?: string | null;
+  address?: string | null;
+  meeting_point: string;
+  latitude: number;
+  longitude: number;
+  is_indoor: number;
+  allowed_templates?: string[];
+}
+
+export interface PodMember {
+  user_id: string;
+  name: string;
+  avatar: string;
+  joined_at: string;
+  status?: string;
+}
+
+export interface Pod {
+  id: number;
+  template_code: string;
+  third_place_id: number;
+  cohort_id?: number | null;
+  created_by_user_id?: string | null;
+  title?: string | null;
+  language_code: string;
+  exchange_language_code?: string | null;
+  starts_at: string;
+  ends_at: string;
+  quorum_deadline_at: string;
+  min_participants: number;
+  max_participants: number;
+  confirmed_count: number;
+  spots_left: number;
+  spend_expectation: 'no_expected_spend' | 'optional_spend' | 'pay_own_way';
+  spend_max_minor?: number | null;
+  spend_currency: string;
+  status: 'forming' | 'quorum' | 'cancelled' | 'completed';
+  quorum_reached_at?: string | null;
+  place_name: string;
+  place_address?: string | null;
+  place_meeting_point: string;
+  place_city: string;
+  place_latitude: number;
+  place_longitude: number;
+  place_is_indoor: number;
+  template_name: string;
+  template_duration_min: number;
+  members: PodMember[];
+  is_member?: boolean;
+}
+
+export interface PodMessage {
+  id: number;
+  pod_id: number;
+  sender_user_id: string;
+  sender_name: string;
+  sender_avatar: string;
+  kind: 'user' | 'system';
+  body: string;
+  created_at: string;
+}
+
+export interface VoiceCallPeer {
+  user_id: string;
+  first_name: string;
+  city: string;
+}
+
+export interface VoiceStatusResponse {
+  user_id: string;
+  daily_calls_used: number;
+  daily_limit: number;
+  cooldown_remaining_seconds: number;
+  is_in_queue: boolean;
+  queue_topic?: string | null;
+  active_call?: {
+    id: string;
+    topic: string;
+    status: string;
+    created_at?: string | null;
+    started_at?: string | null;
+  } | null;
+  window_open: boolean;
+  window_schedule: string;
+  icebreakers: string[];
+  ice_servers: RTCIceServer[];
+}
+
+export interface VoiceRatingPayload {
+  rating: 'respectful' | 'neutral' | 'inappropriate';
+  report_tag?: string;
+  details?: string;
+  block_peer?: boolean;
+}
+
+

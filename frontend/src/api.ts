@@ -24,6 +24,12 @@ import type {
   ModerationAction,
   ReportSchema,
   SessionInfoSchema,
+  ActivityTemplate,
+  ThirdPlace,
+  Pod,
+  PodMessage,
+  VoiceStatusResponse,
+  VoiceRatingPayload,
 } from './types';
 
 export function isNativePlatform(): boolean {
@@ -1097,3 +1103,131 @@ export async function revokeOtherSessions(): Promise<{ status: string; revoked_c
   }
   return res.json();
 }
+
+// --- Micro-Pods & Third Places API ---
+
+export async function fetchPodTemplates(): Promise<ActivityTemplate[]> {
+  const res = await fetch(`${BASE_URL}/pods/templates`);
+  if (!res.ok) throw new Error('Nie udało się pobrać szablonów aktywności');
+  return res.json();
+}
+
+export async function fetchThirdPlaces(city?: string): Promise<ThirdPlace[]> {
+  const url = city ? `${BASE_URL}/pods/places?city=${encodeURIComponent(city)}` : `${BASE_URL}/pods/places`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Nie udało się pobrać miejsc zbiórek');
+  return res.json();
+}
+
+export async function fetchPodFeed(city?: string, token?: string | null): Promise<Pod[]> {
+  const url = city ? `${BASE_URL}/pods/feed?city=${encodeURIComponent(city)}` : `${BASE_URL}/pods/feed`;
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error('Nie udało się pobrać listy podów');
+  return res.json();
+}
+
+export async function joinPod(podId: number, token: string): Promise<Pod> {
+  const res = await fetch(`${BASE_URL}/pods/${podId}/join`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Nie udało się dołączyć do poda');
+  }
+  return res.json();
+}
+
+export async function leavePod(podId: number, token: string): Promise<Pod> {
+  const res = await fetch(`${BASE_URL}/pods/${podId}/leave`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Nie udało się opuścić poda');
+  }
+  return res.json();
+}
+
+export async function fetchPodMessages(podId: number, token: string): Promise<PodMessage[]> {
+  const res = await fetch(`${BASE_URL}/pods/${podId}/messages`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Nie udało się pobrać wiadomości poda');
+  }
+  return res.json();
+}
+
+export async function sendPodMessage(podId: number, text: string, token: string): Promise<PodMessage> {
+  const res = await fetch(`${BASE_URL}/pods/${podId}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Nie udało się wysłać wiadomości');
+  }
+  return res.json();
+}
+
+export async function fetchVoiceStatus(token: string): Promise<VoiceStatusResponse> {
+  const res = await fetch(`${BASE_URL}/voice/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Nie udało się pobrać statusu połączeń głosowych');
+  }
+  return res.json();
+}
+
+export async function rateVoiceCall(
+  callId: string,
+  payload: VoiceRatingPayload,
+  token: string
+): Promise<{ success: boolean; rating_id: string; call_id: string }> {
+  const res = await fetch(`${BASE_URL}/voice/calls/${callId}/rate`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Nie udało się zapisać oceny rozmowy');
+  }
+  return res.json();
+}
+
+export async function hangupVoiceCall(
+  callId: string,
+  token: string,
+  blockPeer = false
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${BASE_URL}/voice/calls/${callId}/hangup`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ reason: 'user_hangup', block_peer: blockPeer }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Nie udało się zakończyć połączenia');
+  }
+  return res.json();
+}
+
+

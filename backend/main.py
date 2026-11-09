@@ -4,6 +4,7 @@ import os
 import json
 import re
 import secrets
+import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
@@ -106,10 +107,13 @@ from config import (
 from auth_providers import otp_manager
 from sos_providers import sos_manager, verify_twilio_signature, verify_webhook_secret
 from storage import pilot_invite_hash, operator_activation_hash, storage, get_db_connection
+from voice_manager import VoiceCallManager
 from rate_limiter import rate_limiter
 from sanitizer import mask_phone, mask_token, mask_email, coarse_coordinates, apply_sanitized_logging
 
 apply_sanitized_logging()
+
+voice_call_manager = VoiceCallManager(ws_manager, storage)
 
 app = FastAPI(
     title="CartMate API",
@@ -290,6 +294,15 @@ def is_scope_authorized_for_user(scope: str, user_id: str) -> bool:
         return bool(outing and outing_in_live_region(outing) and user_id in outing.participant_ids
                     and not any(database.is_user_blocked(user_id, member_id)
                                 for member_id in outing.participant_ids if member_id != user_id))
+    elif prefix == "pod":
+        try:
+            pod_id = int(target)
+            pod = storage.get_pod(pod_id)
+            if not pod:
+                return False
+            return any(m["user_id"] == user_id for m in pod.get("members", []))
+        except (ValueError, TypeError):
+            return False
     return False
 
 
@@ -3350,9 +3363,94 @@ async def websocket_endpoint(
                     await ws_manager.broadcast(f"chat:{room_id}", "chat.message", new_msg.model_dump())
                     if room.scope == "outing":
                         await ws_manager.broadcast(f"outing:{room.target_id}", "chat.message", new_msg.model_dump())
+            elif action == "pod_chat_message":
+                pod_id_raw = msg.get("pod_id")
+                content = (msg.get("text") or "").strip()
+                if pod_id_raw and content:
+                    try:
+                        pod_id = int(pod_id_raw)
+                        sent_msg = storage.send_pod_message(pod_id, user.id, content)
+                        await ws_manager.broadcast(
+                            f"pod:{pod_id}",
+                            "pod_chat_message",
+                            {"pod_id": pod_id, "message": sent_msg}
+                        )
+                    except ValueError as ve:
+                        await ws_manager.send_personal_message(
+                            websocket,
+                            {"type": "error", "message": str(ve)}
+                        )
+                    except Exception as exc:
+                        await ws_manager.send_personal_message(
+                            websocket,
+                            {"type": "error", "message": f"Nie udało się wysłać wiadomości: {exc}"}
+                        )
+            elif action == "voice.join_queue":
+                topic = (msg.get("topic") or "Spokojna rozmowa o dniu").strip()
+                status_res, call_data = await voice_call_manager.enqueue_caller(user.id, topic, websocket)
+                if status_res == "ALREADY_IN_CALL":
+                    await ws_manager.send_personal_message(
+                        websocket,
+                        {"type": "error", "message": "Jesteś już w trakcie aktywnego połączenia."}
+                    )
+                elif status_res == "DAILY_LIMIT_REACHED":
+                    await ws_manager.send_personal_message(
+                        websocket,
+                        {"type": "error", "message": "Osiągnięto dzienny limit połączeń (3 na dobę). Spróbuj jutro."}
+                    )
+                elif status_res.startswith("COOLDOWN_ACTIVE_"):
+                    sec_rem = status_res.split("_")[-1].replace("S", "")
+                    await ws_manager.send_personal_message(
+                        websocket,
+                        {"type": "error", "message": f"Przerwa między rozmowami. Pozostało {sec_rem}s do kolejnego połączenia."}
+                    )
+                elif status_res == "QUEUED":
+                    await ws_manager.send_personal_message(
+                        websocket,
+                        {"type": "voice.queued", "topic": topic, "message": "Szukamy rozmówcy..."}
+                    )
+            elif action == "voice.leave_queue":
+                await voice_call_manager.dequeue_caller(user.id)
+                await ws_manager.send_personal_message(
+                    websocket,
+                    {"type": "voice.left_queue"}
+                )
+            elif action == "voice.call_offer":
+                call_id = msg.get("call_id")
+                sdp = msg.get("sdp")
+                if call_id and sdp:
+                    await voice_call_manager.forward_signaling(call_id, user.id, "voice.call_offer", {"sdp": sdp})
+            elif action == "voice.call_answer":
+                call_id = msg.get("call_id")
+                sdp = msg.get("sdp")
+                if call_id and sdp:
+                    await voice_call_manager.forward_signaling(call_id, user.id, "voice.call_answer", {"sdp": sdp})
+            elif action == "voice.call_ice_candidate":
+                call_id = msg.get("call_id")
+                candidate = msg.get("candidate")
+                if call_id and candidate:
+                    await voice_call_manager.forward_signaling(call_id, user.id, "voice.call_ice_candidate", {"candidate": candidate})
+            elif action == "voice.call_connected":
+                call_id = msg.get("call_id")
+                if call_id:
+                    await voice_call_manager.handle_call_connected(call_id, user.id)
+            elif action == "voice.call_hangup":
+                call_id = msg.get("call_id")
+                reason = msg.get("reason", "user_hangup")
+                block_peer = bool(msg.get("block_peer", False))
+                if call_id:
+                    await voice_call_manager.terminate_call(call_id, initiator_user_id=user.id, reason=reason, block_peer=block_peer)
     except WebSocketDisconnect:
+        await voice_call_manager.dequeue_caller(user.id)
+        active_call_id = voice_call_manager.user_to_call.get(user.id)
+        if active_call_id:
+            await voice_call_manager.terminate_call(active_call_id, initiator_user_id=user.id, reason="peer_disconnected")
         await ws_manager.disconnect(websocket)
     except Exception:
+        await voice_call_manager.dequeue_caller(user.id)
+        active_call_id = voice_call_manager.user_to_call.get(user.id)
+        if active_call_id:
+            await voice_call_manager.terminate_call(active_call_id, initiator_user_id=user.id, reason="peer_disconnected")
         await ws_manager.disconnect(websocket)
 
 
@@ -3407,6 +3505,369 @@ def get_shadow_audit(
     fields; no raw text, summaries, or provider blobs are retained.
     """
     return jev_service.get_shadow_audit_stats()
+
+
+# --- Micro-Pods & Third Places (Migration 11 API) ---
+
+class PodCreateRequest(BaseModel):
+    template_code: str
+    third_place_id: int
+    starts_at: str
+    ends_at: str
+    quorum_deadline_at: str
+    title: Optional[str] = None
+    language_code: str = "pl"
+    exchange_language_code: Optional[str] = None
+    template_params: Optional[str] = None
+    min_participants: int = 3
+    max_participants: int = 5
+    spend_expectation: str = "no_expected_spend"
+    spend_max_minor: Optional[int] = None
+    spend_currency: str = "PLN"
+    cohort_id: Optional[int] = None
+
+class PodMessageRequest(BaseModel):
+    text: str
+
+class ThirdPlaceCreateRequest(BaseModel):
+    slug: str
+    name: str
+    kind: str
+    city: str
+    meeting_point: str
+    latitude: float
+    longitude: float
+    is_indoor: int = 1
+    address: Optional[str] = None
+    district: Optional[str] = None
+    template_codes: Optional[List[str]] = None
+
+
+@app.get("/api/pods/templates")
+def list_activity_templates():
+    """Returns all active structured activity templates (study sprint, park walk, etc)."""
+    return storage.get_activity_templates()
+
+
+@app.get("/api/pods/places")
+def list_third_places(city: Optional[str] = None):
+    """Returns verified public Third Places, optionally filtered by city."""
+    return storage.get_third_places(city=city)
+
+
+@app.post("/api/pods/places")
+def create_third_place_endpoint(
+    req: ThirdPlaceCreateRequest,
+    current_user: UserPrivateSchema = Depends(require_user),
+):
+    """Adds a verified Third Place anchor with its exact meeting point."""
+    try:
+        place_id = storage.create_third_place(
+            slug=req.slug,
+            name=req.name,
+            kind=req.kind,
+            city=req.city,
+            meeting_point=req.meeting_point,
+            latitude=req.latitude,
+            longitude=req.longitude,
+            is_indoor=req.is_indoor,
+            address=req.address,
+            district=req.district,
+            template_codes=req.template_codes,
+        )
+        return {"id": place_id, "name": req.name, "slug": req.slug}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Nie udało się utworzyć miejsca: {exc}")
+
+
+@app.get("/api/pods/feed")
+def get_pods_feed(
+    city: Optional[str] = None,
+    language_code: Optional[str] = None,
+    current_user: Optional[UserPrivateSchema] = Depends(optional_user),
+):
+    """
+    Near Me Today Feed: Returns available micro-pods (forming or at quorum).
+    Hides pods containing mutually blocked users.
+    """
+    viewer_id = current_user.id if current_user else None
+    return storage.list_pods(city=city, language_code=language_code, viewer_user_id=viewer_id)
+
+
+@app.post("/api/pods")
+def create_micro_pod(
+    req: PodCreateRequest,
+    current_user: UserPrivateSchema = Depends(require_user),
+):
+    """Creates a new scheduled micro-pod. The host is automatically added as first confirmed member."""
+    try:
+        pod_id = storage.create_pod(
+            template_code=req.template_code,
+            third_place_id=req.third_place_id,
+            starts_at=req.starts_at,
+            ends_at=req.ends_at,
+            quorum_deadline_at=req.quorum_deadline_at,
+            created_by_user_id=current_user.id,
+            cohort_id=req.cohort_id,
+            title=req.title,
+            language_code=req.language_code,
+            exchange_language_code=req.exchange_language_code,
+            template_params=req.template_params,
+            min_participants=req.min_participants,
+            max_participants=req.max_participants,
+            spend_expectation=req.spend_expectation,
+            spend_max_minor=req.spend_max_minor,
+            spend_currency=req.spend_currency,
+        )
+        pod = storage.get_pod(pod_id)
+        return pod
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Nie udało się utworzyć poda: {exc}")
+
+
+@app.get("/api/pods/{pod_id}")
+def get_pod_details(pod_id: int):
+    """Returns details of a specific micro-pod, including venue and confirmed members."""
+    pod = storage.get_pod(pod_id)
+    if not pod:
+        raise HTTPException(status_code=404, detail="Pod nie został znaleziony.")
+    return pod
+
+
+@app.post("/api/pods/{pod_id}/join")
+async def join_pod_endpoint(
+    pod_id: int,
+    current_user: UserPrivateSchema = Depends(require_user),
+):
+    """Joins a micro-pod. Enforces mutual blocks, seat limits, and updates quorum automatically."""
+    try:
+        pod = storage.join_pod(pod_id, current_user.id)
+        await ws_manager.broadcast(
+            f"pod:{pod_id}",
+            "pod.member_joined",
+            {
+                "pod_id": pod_id,
+                "user_id": current_user.id,
+                "user_name": current_user.name,
+                "status": pod["status"],
+                "confirmed_count": pod["confirmed_count"],
+            },
+        )
+        return pod
+    except ValueError as ve:
+        raise HTTPException(status_code=409, detail=str(ve))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/pods/{pod_id}/leave")
+async def leave_pod_endpoint(
+    pod_id: int,
+    current_user: UserPrivateSchema = Depends(require_user),
+):
+    """Leaves a micro-pod. Drops confirmed count and demotes to 'forming' if below quorum."""
+    try:
+        pod = storage.leave_pod(pod_id, current_user.id)
+        await ws_manager.broadcast(
+            f"pod:{pod_id}",
+            "pod.member_left",
+            {
+                "pod_id": pod_id,
+                "user_id": current_user.id,
+                "status": pod["status"],
+                "confirmed_count": pod["confirmed_count"],
+            },
+        )
+        return pod
+    except ValueError as ve:
+        raise HTTPException(status_code=409, detail=str(ve))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/api/pods/{pod_id}/messages")
+def get_pod_messages_endpoint(
+    pod_id: int,
+    current_user: UserPrivateSchema = Depends(require_user),
+):
+    """Returns pod messages. Locked until quorum (at least 3 people) is confirmed."""
+    try:
+        return storage.get_pod_messages(pod_id, current_user.id)
+    except ValueError as ve:
+        raise HTTPException(status_code=403, detail=str(ve))
+
+
+@app.post("/api/pods/{pod_id}/messages")
+async def send_pod_message_endpoint(
+    pod_id: int,
+    req: PodMessageRequest,
+    current_user: UserPrivateSchema = Depends(require_user),
+):
+    """Sends a chat message to the micro-pod. Enforced by database trigger to require quorum."""
+    try:
+        msg = storage.send_pod_message(pod_id, current_user.id, req.text)
+        await ws_manager.broadcast(
+            f"pod:{pod_id}",
+            "pod_chat_message",
+            {"pod_id": pod_id, "message": msg},
+        )
+        return msg
+    except (ValueError, sqlite3.IntegrityError) as ve:
+        status_code = 403 if "quorum" in str(ve).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(ve))
+    except Exception as exc:
+        status_code = 403 if "quorum" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc))
+
+
+@app.post("/api/pods/sweep")
+def sweep_unconfirmed_pods(
+    current_user: UserPrivateSchema = Depends(require_user),
+):
+    """Cancels pods that failed to reach quorum before their deadline."""
+    cancelled = storage.cancel_unconfirmed_pods()
+    return {"cancelled_count": cancelled}
+
+
+# --- Track 2: 10-Minute Remote Voice Calls Endpoints ---
+
+class VoiceRatingCreate(BaseModel):
+    rating: Literal["respectful", "neutral", "inappropriate"]
+    report_tag: Optional[str] = None
+    details: Optional[str] = None
+    block_peer: bool = False
+
+
+class VoiceHangupRequest(BaseModel):
+    reason: str = "user_hangup"
+    block_peer: bool = False
+
+
+@app.get("/api/voice/status")
+def get_voice_status(
+    current_user: UserPrivateSchema = Depends(require_user),
+):
+    """
+    Returns daily voice call status, cooldown state, and evening schedule for current user.
+    """
+    daily_count = storage.get_daily_voice_call_count(current_user.id)
+    sec_since_last = storage.get_seconds_since_last_voice_call(current_user.id)
+    cooldown_remaining = max(0, int(600 - sec_since_last)) if (sec_since_last is not None and sec_since_last < 600) else 0
+
+    active_call_id = voice_call_manager.user_to_call.get(current_user.id)
+    active_call = None
+    if active_call_id and active_call_id in voice_call_manager.active_calls:
+        c = voice_call_manager.active_calls[active_call_id]
+        active_call = {
+            "id": c["id"],
+            "topic": c.get("topic", "Spokojna rozmowa"),
+            "status": c.get("status", "connecting"),
+            "created_at": c.get("created_at"),
+            "started_at": c.get("started_at"),
+        }
+
+    is_in_queue = current_user.id in voice_call_manager.queue
+    queue_topic = voice_call_manager.queue[current_user.id].topic if is_in_queue else None
+
+    # Scheduled window: 18:00 - 23:00 Polish Time (always open in dev/staging/testing)
+    window_open = True
+    if is_production():
+        try:
+            from zoneinfo import ZoneInfo
+            warsaw_hour = datetime.now(ZoneInfo("Europe/Warsaw")).hour
+            window_open = 18 <= warsaw_hour < 23
+        except Exception:
+            window_open = True
+
+    icebreakers = [
+        "Jak minął Ci dzisiejszy dzień?",
+        "Jaki jest Twój ulubiony sprawdzony przepis na obiad?",
+        "Ciekawy film, serial lub książka warta polecenia?",
+        "Ulubione miejsce na spacer lub kawę w Twoim mieście?",
+        "Najbardziej niezwykłe miejsce w Polsce, które odwiedziłeś?",
+    ]
+
+    return {
+        "user_id": current_user.id,
+        "daily_calls_used": daily_count,
+        "daily_limit": 3,
+        "cooldown_remaining_seconds": cooldown_remaining,
+        "is_in_queue": is_in_queue,
+        "queue_topic": queue_topic,
+        "active_call": active_call,
+        "window_open": window_open,
+        "window_schedule": "Codziennie 18:00 - 23:00",
+        "icebreakers": icebreakers,
+        "ice_servers": voice_call_manager.get_ice_servers(current_user.id),
+    }
+
+
+@app.post("/api/voice/calls/{call_id}/rate")
+def rate_voice_call(
+    call_id: str,
+    request: VoiceRatingCreate,
+    current_user: UserPrivateSchema = Depends(require_user),
+):
+    """
+    Submits a post-call rating (respectful / neutral / inappropriate) and optionally blocks peer.
+    """
+    session = storage.get_voice_session(call_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesja połączenia nie została znaleziona.")
+
+    if current_user.id not in (session["user_a_id"], session["user_b_id"]):
+        raise HTTPException(status_code=403, detail="Brak uprawnień do oceny tego połączenia.")
+
+    target_id = session["user_b_id"] if current_user.id == session["user_a_id"] else session["user_a_id"]
+
+    rating_id = storage.record_voice_rating(
+        session_id=call_id,
+        reporter_id=current_user.id,
+        target_id=target_id,
+        rating=request.rating,
+        report_tag=request.report_tag,
+        details=request.details,
+    )
+
+    if request.block_peer or request.rating == "inappropriate":
+        try:
+            conn = get_db_connection(storage.db_path)
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            conn.execute(
+                "INSERT OR IGNORE INTO user_blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?);",
+                (current_user.id, target_id, now_str),
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+    return {"success": True, "rating_id": rating_id, "call_id": call_id}
+
+
+@app.post("/api/voice/calls/{call_id}/hangup")
+async def hangup_voice_call(
+    call_id: str,
+    request: VoiceHangupRequest,
+    current_user: UserPrivateSchema = Depends(require_user),
+):
+    """
+    Terminates an active voice call via REST and optionally blocks the peer.
+    """
+    session = storage.get_voice_session(call_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesja połączenia nie została znaleziona.")
+
+    if current_user.id not in (session["user_a_id"], session["user_b_id"]):
+        raise HTTPException(status_code=403, detail="Brak uprawnień do zakończenia tego połączenia.")
+
+    res = await voice_call_manager.terminate_call(
+        call_id=call_id,
+        initiator_user_id=current_user.id,
+        reason=request.reason,
+        block_peer=request.block_peer,
+    )
+    return {"success": True, "result": res}
 
 
 # Serve React frontend and the API from one HTTPS origin. Keep this

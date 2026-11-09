@@ -1,10 +1,10 @@
 import React from 'react';
-import { Users, PlusCircle, ShieldCheck, MapPin, User as UserIcon } from 'lucide-react';
+import { Users, PlusCircle, MapPin, User as UserIcon, Sparkles, PhoneCall } from 'lucide-react';
 import type { Trip } from '../types';
 import type { Language } from '../locales';
 import { translations } from '../locales';
 
-export type NavTab = 'radar' | 'new_ping' | 'safety' | 'active_trip' | 'profile';
+export type NavTab = 'pods' | 'voice' | 'radar' | 'new_ping' | 'safety' | 'active_trip' | 'profile';
 
 interface BottomNavProps {
   activeTab: NavTab;
@@ -25,8 +25,40 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
   return (
     <nav className="app-bottom-nav sticky bottom-0 z-30 bg-[#0f172a]/95 backdrop-blur-md border-t border-slate-800/80 px-2 py-2">
-      <div className="grid grid-cols-5 items-end gap-0.5 max-w-lg mx-auto">
-        {/* Nearby People & Trips Tab */}
+      <div className="grid grid-cols-6 items-end gap-0.5 max-w-lg mx-auto">
+        {/* Micro-Pods Tab (Primary) */}
+        <button
+          onClick={() => onTabChange('pods')}
+          aria-current={activeTab === 'pods' ? 'page' : undefined}
+          className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1 px-0.5 py-1 rounded-xl transition cursor-pointer ${
+            activeTab === 'pods'
+              ? 'text-indigo-400 font-semibold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Sparkles className="w-[18px] h-[18px]" />
+          <span className="max-w-full break-words text-center text-[10px] leading-tight">
+            {lang === 'pl' ? 'Pody 3-5' : 'Pods'}
+          </span>
+        </button>
+
+        {/* 10-Minute Voice Calls Tab (Track 2) */}
+        <button
+          onClick={() => onTabChange('voice')}
+          aria-current={activeTab === 'voice' ? 'page' : undefined}
+          className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1 px-0.5 py-1 rounded-xl transition cursor-pointer ${
+            activeTab === 'voice'
+              ? 'text-violet-400 font-semibold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <PhoneCall className="w-[18px] h-[18px]" />
+          <span className="max-w-full break-words text-center text-[10px] leading-tight">
+            {lang === 'pl' ? "Głos 10'" : 'Voice'}
+          </span>
+        </button>
+
+        {/* Nearby People & Radar Tab */}
         <button
           onClick={() => onTabChange('radar')}
           aria-current={activeTab === 'radar' ? 'page' : undefined}
@@ -36,25 +68,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Users className="w-[20px] h-[20px]" />
-          <span className="max-w-full break-words text-center text-[11px] leading-tight">{t.tabNearby || t.tabRadar}</span>
-        </button>
-
-        {/* Safety Hub Tab */}
-        <button
-          onClick={() => onTabChange('safety')}
-          aria-current={activeTab === 'safety' ? 'page' : undefined}
-          aria-label={t.tabSafety}
-          className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1 px-0.5 py-1 rounded-xl transition cursor-pointer ${
-            activeTab === 'safety'
-              ? 'text-emerald-400 font-semibold'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <ShieldCheck className="w-[20px] h-[20px]" />
-          <span aria-hidden="true" className="max-w-full whitespace-nowrap text-center text-[11px] leading-tight">
-            {lang === 'pl' ? 'Bezpiecznie' : t.tabSafety}
-          </span>
+          <Users className="w-[18px] h-[18px]" />
+          <span className="max-w-full break-words text-center text-[10px] leading-tight">{t.tabNearby || t.tabRadar}</span>
         </button>
 
         {/* Create Ping Tab (Center Highlight) */}

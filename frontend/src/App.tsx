@@ -33,6 +33,8 @@ import { SafetyHub } from './components/SafetyHub';
 import { AuthModal } from './components/AuthModal';
 import { PrivacyBanner } from './components/PrivacyBanner';
 import { PilotAgeConsole } from './components/PilotAgeConsole';
+import { PodFeed } from './components/PodFeed';
+import { VoiceCallHUD } from './components/VoiceCallHUD';
 import type { ChatMessage, CommunityStats, LivePing, Trip, User } from './types';
 import type { Language } from './locales';
 import { translations } from './locales';
@@ -659,6 +661,22 @@ export const App: React.FC = () => {
               <button type="button" onClick={() => setTripCancelledNotice(false)} aria-label={translations[lang].dismissNotice} className="min-h-11 min-w-11 rounded-lg text-xl hover:bg-amber-500/10">×</button>
             </div>
           )}
+          {activeTab === 'pods' && (
+            <PodFeed
+              token={getStoredToken()}
+              currentUserId={currentUser?.id}
+              onRequireAuth={() => setIsAuthModalOpen(true)}
+            />
+          )}
+
+          {activeTab === 'voice' && (
+            <VoiceCallHUD
+              token={getStoredToken()}
+              currentUser={currentUser}
+              lang={lang}
+            />
+          )}
+
           {activeTab === 'radar' && (
             <LiveRadarView
               currentUser={currentUser}

@@ -314,6 +314,16 @@ MIGRATIONS: List[Tuple[int, str, str]] = [
             ON operator_activations(target_user_id);
         """,
     ),
+    (
+        11,
+        "micro_pods_third_places",
+        open(os.path.join(os.path.dirname(__file__), "migrations", "0011_micro_pods.sql"), "r", encoding="utf-8").read(),
+    ),
+    (
+        12,
+        "voice_call_engine",
+        open(os.path.join(os.path.dirname(__file__), "migrations", "0012_voice_calls.sql"), "r", encoding="utf-8").read(),
+    ),
 ]
 
 
@@ -1761,6 +1771,646 @@ class DurableStorage:
             cursor = conn.cursor()
             cursor.execute("SELECT token, user_id, expires_at, created_at FROM sessions WHERE user_id = ?;", (user_id,))
             return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    # --- Micro-Pods & Third Places (Migration 11) ---
+
+    def get_activity_templates(self) -> List[dict]:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM activity_templates WHERE is_active = 1 ORDER BY sort_order ASC;")
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_third_places(self, city: Optional[str] = None) -> List[dict]:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            query = "SELECT * FROM third_places WHERE is_active = 1"
+            params: list = []
+            if city:
+                query += " AND city = ?"
+                params.append(city)
+            query += " ORDER BY name ASC;"
+            cursor.execute(query, params)
+            places = [dict(row) for row in cursor.fetchall()]
+
+            for p in places:
+                cursor.execute(
+                    "SELECT template_code FROM third_place_templates WHERE third_place_id = ?;",
+                    (p["id"],),
+                )
+                p["allowed_templates"] = [r[0] for r in cursor.fetchall()]
+            return places
+        finally:
+            conn.close()
+
+    def create_third_place(
+        self,
+        slug: str,
+        name: str,
+        kind: str,
+        city: str,
+        meeting_point: str,
+        latitude: float,
+        longitude: float,
+        is_indoor: int,
+        address: Optional[str] = None,
+        district: Optional[str] = None,
+        template_codes: Optional[List[str]] = None,
+        verified_at: Optional[str] = None,
+    ) -> int:
+        conn = get_db_connection(self.db_path)
+        try:
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO third_places (
+                    slug, name, kind, city, district, address, meeting_point,
+                    latitude, longitude, is_indoor, verified_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    slug, name, kind, city, district, address, meeting_point,
+                    latitude, longitude, is_indoor, verified_at or now_str, now_str, now_str
+                ),
+            )
+            place_id = cursor.lastrowid
+            if template_codes:
+                for code in template_codes:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO third_place_templates (third_place_id, template_code) VALUES (?, ?);",
+                        (place_id, code),
+                    )
+            conn.commit()
+            return place_id
+        finally:
+            conn.close()
+
+    def create_pod(
+        self,
+        template_code: str,
+        third_place_id: int,
+        starts_at: str,
+        ends_at: str,
+        quorum_deadline_at: str,
+        created_by_user_id: Optional[str] = None,
+        cohort_id: Optional[int] = None,
+        title: Optional[str] = None,
+        language_code: str = "pl",
+        exchange_language_code: Optional[str] = None,
+        template_params: Optional[str] = None,
+        min_participants: int = 3,
+        max_participants: int = 5,
+        spend_expectation: str = "no_expected_spend",
+        spend_max_minor: Optional[int] = None,
+        spend_currency: str = "PLN",
+    ) -> int:
+        conn = get_db_connection(self.db_path)
+        try:
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO pods (
+                    template_code, third_place_id, cohort_id, created_by_user_id,
+                    title, language_code, exchange_language_code, template_params,
+                    starts_at, ends_at, quorum_deadline_at, min_participants,
+                    max_participants, spend_expectation, spend_max_minor, spend_currency,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    template_code, third_place_id, cohort_id, created_by_user_id,
+                    title, language_code, exchange_language_code, template_params,
+                    starts_at, ends_at, quorum_deadline_at, min_participants,
+                    max_participants, spend_expectation, spend_max_minor, spend_currency,
+                    now_str, now_str
+                ),
+            )
+            pod_id = cursor.lastrowid
+            if created_by_user_id:
+                cursor.execute(
+                    """
+                    INSERT INTO pod_members (pod_id, user_id, status, joined_at, status_changed_at)
+                    VALUES (?, ?, 'confirmed', ?, ?);
+                    """,
+                    (pod_id, created_by_user_id, now_str, now_str),
+                )
+            conn.commit()
+            return pod_id
+        finally:
+            conn.close()
+
+    def get_pod(self, pod_id: int) -> Optional[dict]:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT p.*,
+                       tp.name AS place_name, tp.address AS place_address,
+                       tp.meeting_point AS place_meeting_point, tp.city AS place_city,
+                       tp.latitude AS place_latitude, tp.longitude AS place_longitude,
+                       tp.is_indoor AS place_is_indoor,
+                       at.name AS template_name, at.default_duration_min AS template_duration_min
+                FROM pods p
+                JOIN third_places tp ON tp.id = p.third_place_id
+                JOIN activity_templates at ON at.code = p.template_code
+                WHERE p.id = ?;
+                """,
+                (pod_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            pod = dict(row)
+
+            # Fetch confirmed members
+            cursor.execute(
+                """
+                SELECT pm.user_id, pm.status, pm.joined_at, pm.arrived_at,
+                       u.data_json
+                FROM pod_members pm
+                JOIN users u ON u.id = pm.user_id
+                WHERE pm.pod_id = ? AND pm.status = 'confirmed'
+                ORDER BY pm.joined_at ASC;
+                """,
+                (pod_id,),
+            )
+            members = []
+            for m in cursor.fetchall():
+                user_data = json.loads(m["data_json"]) if m["data_json"] else {}
+                members.append({
+                    "user_id": m["user_id"],
+                    "status": m["status"],
+                    "joined_at": m["joined_at"],
+                    "arrived_at": m["arrived_at"],
+                    "name": user_data.get("name", "Uczestnik"),
+                    "avatar": user_data.get("avatar", ""),
+                })
+            pod["members"] = members
+            pod["spots_left"] = max(0, pod["max_participants"] - pod["confirmed_count"])
+            return pod
+        finally:
+            conn.close()
+
+    def list_pods(
+        self,
+        city: Optional[str] = None,
+        language_code: Optional[str] = None,
+        cohort_id: Optional[int] = None,
+        viewer_user_id: Optional[str] = None,
+    ) -> List[dict]:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            # Fetch blocked user IDs for viewer
+            blocked_user_ids = set()
+            if viewer_user_id:
+                cursor.execute(
+                    """
+                    SELECT blocked_id FROM user_blocks WHERE blocker_id = ?
+                    UNION
+                    SELECT blocker_id FROM user_blocks WHERE blocked_id = ?;
+                    """,
+                    (viewer_user_id, viewer_user_id),
+                )
+                blocked_user_ids = {r[0] for r in cursor.fetchall()}
+
+            query = """
+                SELECT p.*,
+                       tp.name AS place_name, tp.address AS place_address,
+                       tp.meeting_point AS place_meeting_point, tp.city AS place_city,
+                       tp.latitude AS place_latitude, tp.longitude AS place_longitude,
+                       at.name AS template_name, at.default_duration_min AS template_duration_min
+                FROM pods p
+                JOIN third_places tp ON tp.id = p.third_place_id
+                JOIN activity_templates at ON at.code = p.template_code
+                WHERE p.status IN ('forming', 'quorum')
+            """
+            params: list = []
+            if city:
+                query += " AND tp.city = ?"
+                params.append(city)
+            if language_code:
+                query += " AND p.language_code = ?"
+                params.append(language_code)
+            if cohort_id is not None:
+                query += " AND (p.cohort_id = ? OR p.cohort_id IS NULL)"
+                params.append(cohort_id)
+            else:
+                query += " AND p.cohort_id IS NULL"
+
+            query += " ORDER BY p.starts_at ASC;"
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+            result = []
+            for row in rows:
+                pod = dict(row)
+                pod_id = pod["id"]
+
+                # Get members
+                cursor.execute(
+                    """
+                    SELECT pm.user_id, pm.status, pm.joined_at, u.data_json
+                    FROM pod_members pm
+                    JOIN users u ON u.id = pm.user_id
+                    WHERE pm.pod_id = ? AND pm.status = 'confirmed'
+                    ORDER BY pm.joined_at ASC;
+                    """,
+                    (pod_id,),
+                )
+                members = []
+                has_blocked = False
+                is_viewer_member = False
+
+                for m in cursor.fetchall():
+                    uid = m["user_id"]
+                    if uid in blocked_user_ids:
+                        has_blocked = True
+                    if viewer_user_id and uid == viewer_user_id:
+                        is_viewer_member = True
+                    user_data = json.loads(m["data_json"]) if m["data_json"] else {}
+                    members.append({
+                        "user_id": uid,
+                        "name": user_data.get("name", "Uczestnik"),
+                        "avatar": user_data.get("avatar", ""),
+                        "joined_at": m["joined_at"],
+                    })
+
+                # If pod contains mutually blocked member and viewer is not already in it, hide pod
+                if has_blocked and not is_viewer_member:
+                    continue
+
+                pod["members"] = members
+                pod["spots_left"] = max(0, pod["max_participants"] - pod["confirmed_count"])
+                pod["is_member"] = is_viewer_member
+                result.append(pod)
+
+            return result
+        finally:
+            conn.close()
+
+    def join_pod(self, pod_id: int, user_id: str) -> dict:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            # 1. Check if pod exists and is joinable
+            cursor.execute("SELECT * FROM pods WHERE id = ?;", (pod_id,))
+            pod = cursor.fetchone()
+            if not pod:
+                raise ValueError("POD_NOT_FOUND")
+            if pod["status"] not in ("forming", "quorum"):
+                raise ValueError(f"POD_NOT_JOINABLE_{pod['status'].upper()}")
+
+            # 2. Check mutual blocks with existing confirmed members
+            cursor.execute(
+                """
+                SELECT pm.user_id
+                FROM pod_members pm
+                WHERE pm.pod_id = ? AND pm.status = 'confirmed';
+                """,
+                (pod_id,),
+            )
+            current_member_ids = [r[0] for r in cursor.fetchall()]
+            for cm_id in current_member_ids:
+                if cm_id == user_id:
+                    # Already confirmed member
+                    return self.get_pod(pod_id) or {}
+                cursor.execute(
+                    """
+                    SELECT 1 FROM user_blocks
+                    WHERE (blocker_id = ? AND blocked_id = ?)
+                       OR (blocker_id = ? AND blocked_id = ?);
+                    """,
+                    (user_id, cm_id, cm_id, user_id),
+                )
+                if cursor.fetchone():
+                    raise ValueError("BLOCKED_MEMBER_IN_POD")
+
+            # 3. Check if previously left/removed
+            cursor.execute("SELECT status, removal_reason FROM pod_members WHERE pod_id = ? AND user_id = ?;", (pod_id, user_id))
+            existing = cursor.fetchone()
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            if existing:
+                if existing["status"] == "removed":
+                    raise ValueError(f"CANNOT_REJOIN_REMOVED_{existing['removal_reason']}")
+                # Re-join if left
+                cursor.execute(
+                    """
+                    UPDATE pod_members
+                    SET status = 'confirmed', status_changed_at = ?, joined_at = ?
+                    WHERE pod_id = ? AND user_id = ?;
+                    """,
+                    (now_str, now_str, pod_id, user_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO pod_members (pod_id, user_id, status, joined_at, status_changed_at)
+                    VALUES (?, ?, 'confirmed', ?, ?);
+                    """,
+                    (pod_id, user_id, now_str, now_str),
+                )
+
+            conn.commit()
+            return self.get_pod(pod_id) or {}
+        finally:
+            conn.close()
+
+    def leave_pod(self, pod_id: int, user_id: str) -> dict:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT status FROM pod_members WHERE pod_id = ? AND user_id = ?;", (pod_id, user_id))
+            row = cursor.fetchone()
+            if not row or row["status"] != "confirmed":
+                raise ValueError("NOT_A_CONFIRMED_MEMBER")
+
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            cursor.execute(
+                """
+                UPDATE pod_members
+                SET status = 'left', status_changed_at = ?
+                WHERE pod_id = ? AND user_id = ?;
+                """,
+                (now_str, pod_id, user_id),
+            )
+            conn.commit()
+            return self.get_pod(pod_id) or {}
+        finally:
+            conn.close()
+
+    def get_pod_messages(self, pod_id: int, viewer_user_id: str) -> List[dict]:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            # Must be a member of the pod
+            cursor.execute("SELECT status FROM pod_members WHERE pod_id = ? AND user_id = ?;", (pod_id, viewer_user_id))
+            membership = cursor.fetchone()
+            if not membership or membership["status"] != "confirmed":
+                raise ValueError("NOT_A_POD_MEMBER")
+
+            # Must be at quorum (or completed)
+            cursor.execute("SELECT status FROM pods WHERE id = ?;", (pod_id,))
+            pod = cursor.fetchone()
+            if not pod or pod["status"] not in ("quorum", "completed"):
+                raise ValueError("CHAT_LOCKED_UNTIL_QUORUM")
+
+            cursor.execute(
+                """
+                SELECT pm.*, u.data_json AS sender_data_json
+                FROM pod_messages pm
+                LEFT JOIN users u ON u.id = pm.sender_user_id
+                WHERE pm.pod_id = ? AND pm.deleted_at IS NULL AND pm.moderation_status != 'hidden'
+                ORDER BY pm.created_at ASC;
+                """,
+                (pod_id,),
+            )
+            messages = []
+            for r in cursor.fetchall():
+                msg = dict(r)
+                sender_name = "System"
+                sender_avatar = ""
+                if msg["sender_data_json"]:
+                    sdata = json.loads(msg["sender_data_json"])
+                    sender_name = sdata.get("name", "Uczestnik")
+                    sender_avatar = sdata.get("avatar", "")
+                msg["sender_name"] = sender_name
+                msg["sender_avatar"] = sender_avatar
+                del msg["sender_data_json"]
+                messages.append(msg)
+            return messages
+        finally:
+            conn.close()
+
+    def send_pod_message(self, pod_id: int, sender_user_id: str, body: str) -> dict:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            # Trigger in DB will abort if not at quorum or sender not a confirmed member
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            cursor.execute(
+                """
+                INSERT INTO pod_messages (pod_id, sender_user_id, body, kind, created_at)
+                VALUES (?, ?, ?, 'user', ?);
+                """,
+                (pod_id, sender_user_id, body.strip(), now_str),
+            )
+            msg_id = cursor.lastrowid
+            conn.commit()
+
+            # Retrieve with sender info
+            cursor.execute(
+                """
+                SELECT pm.*, u.data_json AS sender_data_json
+                FROM pod_messages pm
+                LEFT JOIN users u ON u.id = pm.sender_user_id
+                WHERE pm.id = ?;
+                """,
+                (msg_id,),
+            )
+            r = cursor.fetchone()
+            msg = dict(r)
+            sdata = json.loads(msg["sender_data_json"]) if msg["sender_data_json"] else {}
+            msg["sender_name"] = sdata.get("name", "Uczestnik")
+            msg["sender_avatar"] = sdata.get("avatar", "")
+            del msg["sender_data_json"]
+            return msg
+        finally:
+            conn.close()
+
+    def cancel_unconfirmed_pods(self, cutoff_time: Optional[str] = None) -> int:
+        conn = get_db_connection(self.db_path)
+        try:
+            now_str = cutoff_time or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE pods
+                SET status = 'cancelled', cancelled_at = ?, cancel_reason = 'quorum_not_reached', updated_at = ?
+                WHERE status = 'forming' AND quorum_deadline_at <= ?;
+                """,
+                (now_str, now_str, now_str),
+            )
+            cancelled_count = cursor.rowcount
+            conn.commit()
+            return cancelled_count
+        finally:
+            conn.close()
+
+    # --- 10-Minute Remote Voice Calls (Migration 12) ---
+
+    def create_voice_session(
+        self,
+        call_id: str,
+        user_a_id: str,
+        user_b_id: str,
+        topic: str,
+    ) -> dict:
+        conn = get_db_connection(self.db_path)
+        try:
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO voice_call_sessions (
+                    id, user_a_id, user_b_id, topic, status, created_at
+                ) VALUES (?, ?, ?, ?, 'connecting', ?);
+                """,
+                (call_id, user_a_id, user_b_id, topic, now_str),
+            )
+            conn.commit()
+            return {
+                "id": call_id,
+                "user_a_id": user_a_id,
+                "user_b_id": user_b_id,
+                "topic": topic,
+                "status": "connecting",
+                "created_at": now_str,
+            }
+        finally:
+            conn.close()
+
+    def update_voice_session(
+        self,
+        call_id: str,
+        status: str,
+        started_at: Optional[str] = None,
+        ended_at: Optional[str] = None,
+        duration_seconds: Optional[int] = None,
+        end_reason: Optional[str] = None,
+    ) -> None:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            updates = ["status = ?"]
+            params: list = [status]
+
+            if started_at:
+                updates.append("started_at = ?")
+                params.append(started_at)
+            if ended_at:
+                updates.append("ended_at = ?")
+                params.append(ended_at)
+            if duration_seconds is not None:
+                updates.append("duration_seconds = ?")
+                params.append(duration_seconds)
+            if end_reason:
+                updates.append("end_reason = ?")
+                params.append(end_reason)
+
+            params.append(call_id)
+            cursor.execute(
+                f"UPDATE voice_call_sessions SET {', '.join(updates)} WHERE id = ?;",
+                params,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_voice_session(self, call_id: str) -> Optional[dict]:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM voice_call_sessions WHERE id = ?;", (call_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def record_voice_rating(
+        self,
+        session_id: str,
+        reporter_id: str,
+        target_id: str,
+        rating: str,
+        report_tag: Optional[str] = None,
+        details: Optional[str] = None,
+    ) -> str:
+        conn = get_db_connection(self.db_path)
+        try:
+            rating_id = f"vrate_{secrets.token_hex(8)}"
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO voice_call_ratings (
+                    id, session_id, reporter_id, target_id, rating, report_tag, details, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (rating_id, session_id, reporter_id, target_id, rating, report_tag, details, now_str),
+            )
+            conn.commit()
+            return rating_id
+        finally:
+            conn.close()
+
+    def get_daily_voice_call_count(self, user_id: str) -> int:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            # Calls initiated or participated in during the last 24 hours
+            since = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM voice_call_sessions
+                WHERE (user_a_id = ? OR user_b_id = ?)
+                  AND status IN ('active', 'completed')
+                  AND created_at >= ?;
+                """,
+                (user_id, user_id, since),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else 0
+        finally:
+            conn.close()
+
+    def get_seconds_since_last_voice_call(self, user_id: str) -> Optional[float]:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT ended_at, created_at FROM voice_call_sessions
+                WHERE (user_a_id = ? OR user_b_id = ?)
+                  AND status IN ('active', 'completed', 'dropped')
+                ORDER BY created_at DESC LIMIT 1;
+                """,
+                (user_id, user_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            ts_str = row["ended_at"] or row["created_at"]
+            try:
+                last_dt = datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                return (datetime.now(timezone.utc) - last_dt).total_seconds()
+            except Exception:
+                return None
+        finally:
+            conn.close()
+
+    def are_users_mutually_blocked(self, user_a_id: str, user_b_id: str) -> bool:
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT 1 FROM user_blocks
+                WHERE (blocker_id = ? AND blocked_id = ?)
+                   OR (blocker_id = ? AND blocked_id = ?);
+                """,
+                (user_a_id, user_b_id, user_b_id, user_a_id),
+            )
+            return cursor.fetchone() is not None
         finally:
             conn.close()
 
