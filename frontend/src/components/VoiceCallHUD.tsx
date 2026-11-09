@@ -471,9 +471,9 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
               }}
             />
 
-            <div className="w-36 h-36 rounded-full bg-slate-900/90 border border-slate-800 flex flex-col items-center justify-center z-10 shadow-xl">
+            <div className="w-36 h-36 rounded-full bg-slate-900/90 border border-slate-800 flex flex-col items-center justify-center z-10 shadow-2xl glass-panel">
               <Clock
-                className={`w-5 h-5 mb-1 ${
+                className={`w-5 h-5 mb-0.5 ${
                   secondsRemaining <= 60 ? 'text-amber-400 animate-pulse' : 'text-indigo-400'
                 }`}
               />
@@ -484,19 +484,46 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
               >
                 {formatTimer(secondsRemaining)}
               </span>
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
+
+              {/* Dynamic Equalizer Wave Bars */}
+              <div className="flex items-center gap-0.5 h-3 my-1">
+                <span className={`w-0.5 rounded-full bg-indigo-400 transition-all duration-75 ${audioLevel > 5 ? 'h-3' : 'h-1'}`} />
+                <span className={`w-0.5 rounded-full bg-indigo-300 transition-all duration-75 ${audioLevel > 15 ? 'h-4' : 'h-1.5'}`} />
+                <span className={`w-0.5 rounded-full bg-violet-400 transition-all duration-75 ${audioLevel > 25 ? 'h-3.5' : 'h-1'}`} />
+                <span className={`w-0.5 rounded-full bg-indigo-300 transition-all duration-75 ${audioLevel > 15 ? 'h-4' : 'h-1.5'}`} />
+                <span className={`w-0.5 rounded-full bg-indigo-400 transition-all duration-75 ${audioLevel > 5 ? 'h-3' : 'h-1'}`} />
+              </div>
+
+              <span className="text-[9px] text-slate-500 uppercase tracking-wider font-bold">
                 Limit 10:00
               </span>
             </div>
           </div>
 
-          {/* Icebreaker Prompt Cards */}
-          <div className="w-full bg-slate-900/60 border border-slate-800/80 rounded-2xl p-3.5 mb-6">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Pomysł na pytanie w ciszy:</span>
+          {/* Icebreaker Prompt Cards with quick shuffle */}
+          <div className="w-full bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 mb-6 shadow-md glass-panel">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-300 mb-2">
+              <span className="flex items-center gap-1.5 text-amber-300 font-bold">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                Pomysł na temat / pytanie:
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const list = statusData?.icebreakers || [];
+                  if (list.length > 0) {
+                    const currentIndex = list.indexOf(selectedTopic);
+                    const nextTopic = list[(currentIndex + 1) % list.length];
+                    setSelectedTopic(nextTopic);
+                  }
+                }}
+                className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Inne pytanie
+              </button>
             </div>
-            <p className="text-xs text-slate-300 italic leading-relaxed">
+            <p className="text-xs text-slate-200 italic leading-relaxed">
               "{selectedTopic}"
             </p>
           </div>

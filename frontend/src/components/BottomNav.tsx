@@ -30,9 +30,9 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         <button
           onClick={() => onTabChange('pods')}
           aria-current={activeTab === 'pods' ? 'page' : undefined}
-          className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1 px-0.5 py-1 rounded-xl transition cursor-pointer ${
+          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 rounded-xl transition-all cursor-pointer ${
             activeTab === 'pods'
-              ? 'text-indigo-400 font-semibold'
+              ? 'text-indigo-400 font-bold scale-105'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -40,15 +40,16 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <span className="max-w-full break-words text-center text-[10px] leading-tight">
             {lang === 'pl' ? 'Pody 3-5' : 'Pods'}
           </span>
+          {activeTab === 'pods' && <span className="w-1 h-1 rounded-full bg-indigo-400" />}
         </button>
 
         {/* 10-Minute Voice Calls Tab (Track 2) */}
         <button
           onClick={() => onTabChange('voice')}
           aria-current={activeTab === 'voice' ? 'page' : undefined}
-          className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1 px-0.5 py-1 rounded-xl transition cursor-pointer ${
+          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 rounded-xl transition-all cursor-pointer ${
             activeTab === 'voice'
-              ? 'text-violet-400 font-semibold'
+              ? 'text-violet-400 font-bold scale-105'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -56,20 +57,22 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <span className="max-w-full break-words text-center text-[10px] leading-tight">
             {lang === 'pl' ? "Głos 10'" : 'Voice'}
           </span>
+          {activeTab === 'voice' && <span className="w-1 h-1 rounded-full bg-violet-400" />}
         </button>
 
         {/* Nearby People & Radar Tab */}
         <button
           onClick={() => onTabChange('radar')}
           aria-current={activeTab === 'radar' ? 'page' : undefined}
-          className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1 px-0.5 py-1 rounded-xl transition cursor-pointer ${
+          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 rounded-xl transition-all cursor-pointer ${
             activeTab === 'radar'
-              ? 'text-emerald-400 font-semibold'
+              ? 'text-emerald-400 font-bold scale-105'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           <Users className="w-[18px] h-[18px]" />
           <span className="max-w-full break-words text-center text-[10px] leading-tight">{t.tabNearby || t.tabRadar}</span>
+          {activeTab === 'radar' && <span className="w-1 h-1 rounded-full bg-emerald-400" />}
         </button>
 
         {/* Create Ping Tab (Center Highlight) */}
@@ -89,18 +92,19 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           onClick={() => onTabChange('active_trip')}
           aria-current={activeTab === 'active_trip' ? 'page' : undefined}
           aria-label={hasNewChatActivity ? `${t.tabTrip}, ${t.newChatMessage}` : t.tabTrip}
-          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1 px-0.5 py-1 rounded-xl transition cursor-pointer ${
+          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 rounded-xl transition-all cursor-pointer ${
             activeTab === 'active_trip'
-              ? 'text-emerald-400 font-semibold'
+              ? 'text-emerald-400 font-bold scale-105'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <MapPin className="w-[20px] h-[20px]" />
-          <span aria-hidden="true" className="max-w-full whitespace-nowrap text-center text-[11px] leading-tight">
+          <MapPin className="w-[18px] h-[18px]" />
+          <span aria-hidden="true" className="max-w-full whitespace-nowrap text-center text-[10px] leading-tight">
             {lang === 'pl' ? 'Wyjście' : t.tabTrip}
           </span>
+          {activeTab === 'active_trip' && <span className="w-1 h-1 rounded-full bg-emerald-400" />}
           {activeTrip && (
-            <span aria-hidden="true" className={`absolute top-1 right-2 w-2.5 h-2.5 rounded-full ring-2 ring-[#0f172a] ${hasNewChatActivity ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+            <span aria-hidden="true" className={`absolute top-1 right-2 w-2 h-2 rounded-full ring-2 ring-[#0f172a] ${hasNewChatActivity ? 'bg-amber-400' : 'bg-emerald-400'}`} />
           )}
         </button>
 
@@ -108,14 +112,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         <button
           onClick={() => onTabChange('profile')}
           aria-current={activeTab === 'profile' ? 'page' : undefined}
-          className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1 px-0.5 py-1 rounded-xl transition cursor-pointer ${
+          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 rounded-xl transition-all cursor-pointer ${
             activeTab === 'profile'
-              ? 'text-emerald-400 font-semibold'
+              ? 'text-emerald-400 font-bold scale-105'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <UserIcon className="w-[20px] h-[20px]" />
-          <span className="max-w-full break-words text-center text-[11px] leading-tight">{t.tabProfile}</span>
+          <UserIcon className="w-[18px] h-[18px]" />
+          <span className="max-w-full break-words text-center text-[10px] leading-tight">{t.tabProfile}</span>
+          {activeTab === 'profile' && <span className="w-1 h-1 rounded-full bg-emerald-400" />}
         </button>
       </div>
       <p role="status" className="sr-only">{hasNewChatActivity ? t.newChatMessage : ''}</p>
