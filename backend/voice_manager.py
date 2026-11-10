@@ -54,6 +54,15 @@ class VoiceCallManager:
         self.disconnect_grace_tasks: Dict[str, asyncio.Task] = {}
         self.lock = asyncio.Lock()
 
+    def assert_production_turn_secret_configured(self) -> None:
+        """Refuse to start production with a missing or shared default TURN secret."""
+        env = os.getenv("CARTMATE_ENV", "")
+        secret = os.getenv("CARTMATE_TURN_SECRET", DEFAULT_DEV_TURN_SECRET)
+        if env == "production" and (not secret or secret == DEFAULT_DEV_TURN_SECRET):
+            raise RuntimeError(
+                "CARTMATE_TURN_SECRET must be configured with a unique non-default secret in production."
+            )
+
     def get_ice_servers(self, user_id: str) -> List[dict]:
         """
         Returns STUN and TURN relay configurations.

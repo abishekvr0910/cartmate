@@ -40,7 +40,15 @@ export const Header: React.FC<HeaderProps> = ({
     { code: 'ru', label: 'Русский', flag: '🇷🇺' },
   ];
 
+  const TIER_NAMES: Record<Language, { gold: string; silver: string; bronze: string }> = {
+    pl: { gold: 'Złoty', silver: 'Srebrny (ID)', bronze: 'Brązowy' },
+    en: { gold: 'Gold', silver: 'Silver (ID)', bronze: 'Bronze' },
+    uk: { gold: 'Золотий', silver: 'Срібний (ID)', bronze: 'Бронзовий' },
+    ru: { gold: 'Золотой', silver: 'Серебряный (ID)', bronze: 'Бронзовый' },
+  };
+
   const currentLangObj = LANGUAGES.find((l) => l.code === lang) || LANGUAGES[0];
+  const tierNames = TIER_NAMES[lang] || TIER_NAMES.pl;
 
   const getTierBadge = () => {
     switch (currentUser.trust_tier) {
@@ -48,21 +56,21 @@ export const Header: React.FC<HeaderProps> = ({
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
             <Award className="w-3.5 h-3.5 text-amber-400" />
-            <span>{lang === 'pl' ? 'Złoty' : 'Gold'}</span>
+            <span>{tierNames.gold}</span>
           </span>
         );
       case 'Silver':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{lang === 'pl' ? 'Srebrny (ID)' : 'Silver (ID)'}</span>
+            <span>{tierNames.silver}</span>
           </span>
         );
       default:
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/40">
             <Shield className="w-3.5 h-3.5 text-blue-400" />
-            <span>{lang === 'pl' ? 'Brązowy' : 'Bronze'}</span>
+            <span>{tierNames.bronze}</span>
           </span>
         );
     }

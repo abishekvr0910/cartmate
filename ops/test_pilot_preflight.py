@@ -166,42 +166,57 @@ def test_run_checks_qa_leak(mock_server):
         run_checks(base_url, allow_loopback=True)
 
 
-def test_preflight_real_fastapi_app(monkeypatch, tmp_path):
-    """Real FastAPI integration verifying preflight against the actual application endpoints."""
+def test_preflight_real_fastapi_app(tmp_path):
+    """Real FastAPI integration verifying preflight against the actual application endpoints in an isolated subprocess."""
+    import os
     import sys
+    import subprocess
     from pathlib import Path
+
     root = Path(__file__).resolve().parent.parent
-    if str(root / "backend") not in sys.path:
-        sys.path.insert(0, str(root / "backend"))
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
+    root_str = str(root).replace("\\", "/")
+    test_db = str(tmp_path / "real_preflight.db").replace("\\", "/")
 
-    test_db = str(tmp_path / "real_preflight.db")
-    monkeypatch.setenv("CARTMATE_ENV", "staging")
-    monkeypatch.setenv("CARTMATE_DEPLOYMENT", "0")
-    monkeypatch.setenv("CARTMATE_OPERATOR_PILOT_ENABLED", "1")
-    monkeypatch.setenv("CARTMATE_MANUAL_AGE_PILOT_ENABLED", "1")
-    monkeypatch.setenv("CARTMATE_DATABASE_PATH", test_db)
-    monkeypatch.setenv("CARTMATE_CORS_ALLOWED_ORIGINS", "https://operator-host.ts.net")
-    monkeypatch.setenv("CARTMATE_DEFAULT_REGION", "silesia")
-    monkeypatch.setenv("OTP_PROVIDER", "console")
-    monkeypatch.setenv("SOS_PROVIDER", "disabled")
-    monkeypatch.setenv("JEV_MODE", "disabled")
-    monkeypatch.setenv("SOS_WEBHOOK_SECRET", "synthetic-secret-for-preflight-test")
+    code = f"""
+import sys
+from pathlib import Path
+root = Path(r"{root_str}")
+if str(root / "backend") not in sys.path:
+    sys.path.insert(0, str(root / "backend"))
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
 
-    from fastapi.testclient import TestClient
-    import main as application
-    from ops import pilot_preflight
+from fastapi.testclient import TestClient
+import main as application
+from ops import pilot_preflight
 
-    with TestClient(application.app) as client:
-        def test_client_get_json(origin, route, token=None):
-            headers = {"Authorization": f"Bearer {token}"} if token else {}
-            res = client.get(route, headers=headers)
-            return res.status_code, res.json()
+with TestClient(application.app) as client:
+    def test_client_get_json(origin, route, token=None):
+        headers = {{"Authorization": f"Bearer {{token}}"}} if token else {{}}
+        res = client.get(route, headers=headers)
+        return res.status_code, res.json()
 
-        monkeypatch.setattr(pilot_preflight, "get_json", test_client_get_json)
-        blockers = pilot_preflight.run_checks("https://operator-host.ts.net")
-        assert isinstance(blockers, list)
-        # Without populated moderators, blockers will correctly list moderator requirement
-        assert any("moderator" in b.lower() for b in blockers)
+    pilot_preflight.get_json = test_client_get_json
+    blockers = pilot_preflight.run_checks("https://operator-host.ts.net")
+    assert isinstance(blockers, list)
+    assert any("moderator" in b.lower() for b in blockers)
+print("PASSED_PREFLIGHT_REAL_APP")
+"""
+    env = os.environ.copy()
+    env["CARTMATE_ENV"] = "staging"
+    env["CARTMATE_DEPLOYMENT"] = "0"
+    env["CARTMATE_OPERATOR_PILOT_ENABLED"] = "1"
+    env["CARTMATE_MANUAL_AGE_PILOT_ENABLED"] = "1"
+    env["CARTMATE_DATABASE_PATH"] = test_db
+    env["CARTMATE_CORS_ALLOWED_ORIGINS"] = "https://operator-host.ts.net"
+    env["CARTMATE_DEFAULT_REGION"] = "silesia"
+    env["OTP_PROVIDER"] = "console"
+    env["SOS_PROVIDER"] = "disabled"
+    env["JEV_MODE"] = "disabled"
+    env["SOS_WEBHOOK_SECRET"] = "synthetic-secret-for-preflight-test"
+    env["CARTMATE_TURN_SECRET"] = "cartmate_ephemeral_turn_secret_dev"
+
+    proc = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+    assert proc.returncode == 0, f"Error:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    assert "PASSED_PREFLIGHT_REAL_APP" in proc.stdout
 

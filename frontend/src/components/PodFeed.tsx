@@ -69,6 +69,35 @@ const POD_COPY: Record<
     chatLockedErr: string;
     noMessagesYet: string;
     inputPlaceholder: string;
+    closeNotice: string;
+    emptySubtitle: string;
+    templatePark: string;
+    templateStudy: string;
+    templateGames: string;
+    templateLang: string;
+    templateDefault: string;
+    pillThirdPlaces: string;
+    pillQuorum: string;
+    pillNoSpend: string;
+    durationMinSuffix: string;
+    meetingLabel: string;
+    spendLabel: string;
+    freeSpend: string;
+    payOwn: string;
+    seatsTaken: string;
+    seatsFree: string;
+    fullPod: string;
+    participantsLabel: string;
+    freeSeatTitle: string;
+    youLabel: string;
+    messageContentLabel: string;
+    loadError: string;
+    joinError: string;
+    leaveError: string;
+    sendError: string;
+    seatTitle: (index: number, occupied: boolean) => string;
+    needMore: (count: number) => string;
+    quorumActiveCount: (count: number) => string;
   }
 > = {
   pl: {
@@ -99,6 +128,35 @@ const POD_COPY: Record<
     chatLockedErr: 'Czat jest zablokowany do momentu osiągnięcia quorum (min. 3 osoby)',
     noMessagesYet: 'Brak wcześniejszych wiadomości. Przywitaj się z grupą!',
     inputPlaceholder: 'Napisz do grupy...',
+    closeNotice: 'Zamknij powiadomienie',
+    emptySubtitle: 'Wkrótce pojawią się nowe zaplanowane wyjścia w sprawdzonych lokalizacjach w Twojej okolicy.',
+    templatePark: 'Spacer w parku',
+    templateStudy: 'Nauka / Coworking',
+    templateGames: 'Gry planszowe',
+    templateLang: 'Wymiana językowa',
+    templateDefault: 'Spotkanie w grupie',
+    pillThirdPlaces: 'Sprawdzone Third Places',
+    pillQuorum: 'Gwarancja Quorum (3-5 osób)',
+    pillNoSpend: 'Zero oczekiwanych wydatków',
+    durationMinSuffix: 'min',
+    meetingLabel: 'Zbiórka:',
+    spendLabel: 'Wydatki:',
+    freeSpend: 'Bezpłatnie (0 zł)',
+    payOwn: 'Płatność za siebie',
+    seatsTaken: 'Zajęte miejsca:',
+    seatsFree: 'Wolne:',
+    fullPod: 'Pełny pod',
+    participantsLabel: 'Uczestnicy:',
+    freeSeatTitle: 'Wolne miejsce',
+    youLabel: 'Ty',
+    messageContentLabel: 'Treść wiadomości',
+    loadError: 'Nie udało się pobrać listy podów',
+    joinError: 'Błąd dołączania do poda',
+    leaveError: 'Błąd opuszczania poda',
+    sendError: 'Nie udało się wysłać wiadomości',
+    seatTitle: (index, occupied) => `Miejsce ${index} (${occupied ? 'Zajęte' : 'Wolne'})`,
+    needMore: (count) => `Potrzeba jeszcze ${count} ${count === 1 ? 'osoby' : 'osób'} do odblokowania czatu`,
+    quorumActiveCount: (count) => `Quorum aktywne (${count} osób)`,
   },
   en: {
     joined: 'Joined the pod!',
@@ -128,6 +186,35 @@ const POD_COPY: Record<
     chatLockedErr: 'Chat is locked until quorum (min. 3 people) is reached',
     noMessagesYet: 'No messages yet. Say hello to the group!',
     inputPlaceholder: 'Message the group...',
+    closeNotice: 'Dismiss notice',
+    emptySubtitle: 'New scheduled outings at verified locations nearby will appear soon.',
+    templatePark: 'Park walk',
+    templateStudy: 'Study / Coworking',
+    templateGames: 'Board games',
+    templateLang: 'Language exchange',
+    templateDefault: 'Group meetup',
+    pillThirdPlaces: 'Verified Third Places',
+    pillQuorum: 'Quorum guarantee (3-5 people)',
+    pillNoSpend: 'No expected spending',
+    durationMinSuffix: 'min',
+    meetingLabel: 'Meetup:',
+    spendLabel: 'Costs:',
+    freeSpend: 'Free (0 PLN)',
+    payOwn: 'Pay for yourself',
+    seatsTaken: 'Seats taken:',
+    seatsFree: 'Free:',
+    fullPod: 'Pod full',
+    participantsLabel: 'Participants:',
+    freeSeatTitle: 'Free seat',
+    youLabel: 'You',
+    messageContentLabel: 'Message text',
+    loadError: 'Failed to load pods',
+    joinError: 'Failed to join pod',
+    leaveError: 'Failed to leave pod',
+    sendError: 'Failed to send message',
+    seatTitle: (index, occupied) => `Seat ${index} (${occupied ? 'Taken' : 'Free'})`,
+    needMore: (count) => `Need ${count} more ${count === 1 ? 'person' : 'people'} to unlock chat`,
+    quorumActiveCount: (count) => `Quorum active (${count} people)`,
   },
   uk: {
     joined: 'Ви приєдналися до групи!',
@@ -157,6 +244,35 @@ const POD_COPY: Record<
     chatLockedErr: 'Чат заблоковано до досягнення кворуму (мін. 3 особи)',
     noMessagesYet: 'Повідомлень ще немає. Привітайтеся з групою!',
     inputPlaceholder: 'Напишіть групі...',
+    closeNotice: 'Закрити повідомлення',
+    emptySubtitle: 'Незабаром з’являться нові заплановані виходи в перевірених місцях поблизу.',
+    templatePark: 'Прогулянка в парку',
+    templateStudy: 'Навчання / Коворкінг',
+    templateGames: 'Настільні ігри',
+    templateLang: 'Мовний обмін',
+    templateDefault: 'Зустріч у групі',
+    pillThirdPlaces: 'Перевірені Треті Місця',
+    pillQuorum: 'Гарантія Кворуму (3-5 осіб)',
+    pillNoSpend: 'Без очікуваних витрат',
+    durationMinSuffix: 'хв',
+    meetingLabel: 'Збір:',
+    spendLabel: 'Витрати:',
+    freeSpend: 'Безкоштовно (0 zł)',
+    payOwn: 'Кожен платить за себе',
+    seatsTaken: 'Зайняті місця:',
+    seatsFree: 'Вільні:',
+    fullPod: 'Група заповнена',
+    participantsLabel: 'Учасники:',
+    freeSeatTitle: 'Вільне місце',
+    youLabel: 'Ви',
+    messageContentLabel: 'Текст повідомлення',
+    loadError: 'Не вдалося завантажити групи',
+    joinError: 'Не вдалося приєднатися до групи',
+    leaveError: 'Не вдалося залишити групу',
+    sendError: 'Не вдалося надіслати повідомлення',
+    seatTitle: (index, occupied) => `Місце ${index} (${occupied ? 'Зайняте' : 'Вільне'})`,
+    needMore: (count) => `Потрібно ще ${count} ${count === 1 ? 'особу' : 'осіб'} для відкриття чату`,
+    quorumActiveCount: (count) => `Кворум активний (${count} осіб)`,
   },
   ru: {
     joined: 'Вы присоединились к группе!',
@@ -186,6 +302,35 @@ const POD_COPY: Record<
     chatLockedErr: 'Чат заблокирован до достижения кворума (мин. 3 человека)',
     noMessagesYet: 'Сообщений пока нет. Поприветствуйте группу!',
     inputPlaceholder: 'Напишите группе...',
+    closeNotice: 'Закрыть уведомление',
+    emptySubtitle: 'Скоро появятся новые запланированные встречи в проверенных местах рядом.',
+    templatePark: 'Прогулка в парке',
+    templateStudy: 'Учёба / Коворкинг',
+    templateGames: 'Настольные игры',
+    templateLang: 'Языковой обмен',
+    templateDefault: 'Встреча в группе',
+    pillThirdPlaces: 'Проверенные Третьи Места',
+    pillQuorum: 'Гарантия Кворума (3-5 чел.)',
+    pillNoSpend: 'Без ожидаемых расходов',
+    durationMinSuffix: 'мин',
+    meetingLabel: 'Сбор:',
+    spendLabel: 'Расходы:',
+    freeSpend: 'Бесплатно (0 zł)',
+    payOwn: 'Каждый платит за себя',
+    seatsTaken: 'Занятые места:',
+    seatsFree: 'Свободно:',
+    fullPod: 'Группа заполнена',
+    participantsLabel: 'Участники:',
+    freeSeatTitle: 'Свободное место',
+    youLabel: 'Вы',
+    messageContentLabel: 'Текст сообщения',
+    loadError: 'Не удалось загрузить группы',
+    joinError: 'Не удалось присоединиться к группе',
+    leaveError: 'Не удалось покинуть группу',
+    sendError: 'Не удалось отправить сообщение',
+    seatTitle: (index, occupied) => `Место ${index} (${occupied ? 'Занято' : 'Свободно'})`,
+    needMore: (count) => `Нужно ещё ${count} чел. до открытия чата`,
+    quorumActiveCount: (count) => `Кворум активен (${count} чел.)`,
   },
 };
 
@@ -215,11 +360,11 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
       const data = await fetchPodFeed(cityFilter, token);
       setPods(data);
     } catch (err: any) {
-      setError(err.message || 'Nie udało się pobrać listy podów');
+      setError(err.message || copy.loadError);
     } finally {
       setLoading(false);
     }
-  }, [selectedCity, token]);
+  }, [selectedCity, token, copy.loadError]);
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect
@@ -323,7 +468,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
       setActionFeedback({ type: 'success', message: copy.joined });
       await loadFeed();
     } catch (err: any) {
-      setActionFeedback({ type: 'error', message: err.message || 'Błąd dołączania do poda' });
+      setActionFeedback({ type: 'error', message: err.message || copy.joinError });
     }
   };
 
@@ -338,7 +483,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
       setActionFeedback({ type: 'success', message: copy.left });
       await loadFeed();
     } catch (err: any) {
-      setActionFeedback({ type: 'error', message: err.message || 'Błąd opuszczania poda' });
+      setActionFeedback({ type: 'error', message: err.message || copy.leaveError });
     }
   };
 
@@ -353,7 +498,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
       const msgs = await fetchPodMessages(pod.id, token);
       setChatMessages(msgs);
     } catch (err: any) {
-      setChatError(err.message || 'Czat jest zablokowany do momentu osiągnięcia quorum (min. 3 osoby)');
+      setChatError(err.message || copy.chatLockedErr);
       setChatMessages([]);
     }
   };
@@ -368,7 +513,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
       setChatMessages((prev) => [...prev, newMsg]);
       setMessageText('');
     } catch (err: any) {
-      setChatError(err.message || 'Nie udało się wysłać wiadomości');
+      setChatError(err.message || copy.sendError);
     } finally {
       setSendingMsg(false);
     }
@@ -401,7 +546,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
           accent: 'emerald',
           badgeBg: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
           gradient: 'from-emerald-950/40 via-slate-900/90 to-slate-950',
-          title: 'Spacer w parku',
+          title: copy.templatePark,
         };
       case 'study_sprint':
         return {
@@ -409,7 +554,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
           accent: 'blue',
           badgeBg: 'bg-blue-500/15 border-blue-500/30 text-blue-300',
           gradient: 'from-blue-950/40 via-slate-900/90 to-slate-950',
-          title: 'Nauka / Coworking',
+          title: copy.templateStudy,
         };
       case 'board_games':
         return {
@@ -417,7 +562,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
           accent: 'amber',
           badgeBg: 'bg-amber-500/15 border-amber-500/30 text-amber-300',
           gradient: 'from-amber-950/40 via-slate-900/90 to-slate-950',
-          title: 'Gry planszowe',
+          title: copy.templateGames,
         };
       case 'language_exchange':
         return {
@@ -425,7 +570,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
           accent: 'violet',
           badgeBg: 'bg-violet-500/15 border-violet-500/30 text-violet-300',
           gradient: 'from-violet-950/40 via-slate-900/90 to-slate-950',
-          title: 'Wymiana językowa',
+          title: copy.templateLang,
         };
       default:
         return {
@@ -433,7 +578,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
           accent: 'indigo',
           badgeBg: 'bg-indigo-500/15 border-indigo-500/30 text-indigo-300',
           gradient: 'from-indigo-950/40 via-slate-900/90 to-slate-950',
-          title: 'Spotkanie w grupie',
+          title: copy.templateDefault,
         };
     }
   };
@@ -470,15 +615,15 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
           <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-300 mb-6">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800/80 border border-slate-700/80 font-medium">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              Sprawdzone Third Places
+              {copy.pillThirdPlaces}
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800/80 border border-slate-700/80 font-medium">
               <Users className="w-3.5 h-3.5 text-indigo-400" />
-              Gwarancja Quorum (3-5 osób)
+              {copy.pillQuorum}
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800/80 border border-slate-700/80 font-medium">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              Zero oczekiwanych wydatków
+              {copy.pillNoSpend}
             </span>
           </div>
 
@@ -549,7 +694,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
           <button
             type="button"
             onClick={() => setActionFeedback(null)}
-            aria-label="Zamknij powiadomienie"
+            aria-label={copy.closeNotice}
             className="text-slate-400 hover:text-white min-h-[32px] min-w-[32px] flex items-center justify-center cursor-pointer"
           >
             <X className="w-4 h-4" />
@@ -580,7 +725,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
           </div>
           <h3 className="text-base font-bold text-white mb-1.5">{copy.emptyTitle}</h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            Wkrótce pojawią się nowe zaplanowane wyjścia w sprawdzonych lokalizacjach w Twojej okolicy.
+            {copy.emptySubtitle}
           </p>
         </div>
       )}
@@ -603,7 +748,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                 <div className="flex items-start justify-between gap-2 mb-3.5">
                   <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border ${theme.badgeBg}`}>
                     <span>{theme.icon}</span>
-                    <span>{pod.template_name || theme.title} · {pod.template_duration_min} min</span>
+                    <span>{pod.template_name || theme.title} · {pod.template_duration_min} {copy.durationMinSuffix}</span>
                   </span>
 
                   {isAtQuorum ? (
@@ -631,15 +776,15 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                     <span>{pod.place_name} ({pod.place_city})</span>
                   </div>
                   <div className="pl-5 text-slate-400">
-                    Zbiórka: <span className="text-slate-200 font-medium">{pod.place_meeting_point}</span>
+                    {copy.meetingLabel} <span className="text-slate-200 font-medium">{pod.place_meeting_point}</span>
                   </div>
                   <div className="pl-5 text-slate-400 flex items-center gap-1.5">
                     <Calendar className="w-3 h-3 text-indigo-400" />
                     <span>{formatDate(pod.starts_at)}, {formatTime(pod.starts_at)} – {formatTime(pod.ends_at)}</span>
                   </div>
                   <div className="pl-5 text-slate-400">
-                    Wydatki: <span className="text-emerald-400 font-medium">
-                      {pod.spend_expectation === 'no_expected_spend' ? 'Bezpłatnie (0 zł)' : 'Płatność za siebie'}
+                    {copy.spendLabel} <span className="text-emerald-400 font-medium">
+                      {pod.spend_expectation === 'no_expected_spend' ? copy.freeSpend : copy.payOwn}
                     </span>
                   </div>
                 </div>
@@ -649,10 +794,10 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                   <div className="flex justify-between items-center text-xs font-semibold mb-2">
                     <span className="flex items-center gap-1.5 text-slate-300">
                       <Users className="w-3.5 h-3.5 text-indigo-400" />
-                      Zajęte miejsca: {pod.confirmed_count} / {pod.max_participants}
+                      {copy.seatsTaken} {pod.confirmed_count} / {pod.max_participants}
                     </span>
                     <span className="text-slate-400 text-[11px]">
-                      {pod.spots_left > 0 ? `Wolne: ${pod.spots_left}` : 'Pełny pod'}
+                      {pod.spots_left > 0 ? `${copy.seatsFree} ${pod.spots_left}` : copy.fullPod}
                     </span>
                   </div>
 
@@ -673,7 +818,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                               ? 'bg-slate-800 border border-slate-700/80'
                               : 'bg-slate-850 border border-slate-800'
                           }`}
-                          title={`Miejsce ${i + 1}${isOccupied ? ' (Zajęte)' : ' (Wolne)'}`}
+                          title={copy.seatTitle(i + 1, isOccupied)}
                         />
                       );
                     })}
@@ -682,14 +827,14 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                   {!isAtQuorum && (
                     <div className="text-[11px] text-amber-300 font-medium mt-2 flex items-center gap-1">
                       <span>⚡</span>
-                      <span>Potrzeba jeszcze {spotsNeeded} {spotsNeeded === 1 ? 'osoby' : 'osób'} do odblokowania czatu</span>
+                      <span>{copy.needMore(spotsNeeded)}</span>
                     </div>
                   )}
                 </div>
 
                 {/* Facepile / Attendee Avatars */}
                 <div className="flex items-center gap-2 mb-4">
-                  <span className="text-[11px] text-slate-400 font-medium">Uczestnicy:</span>
+                  <span className="text-[11px] text-slate-400 font-medium">{copy.participantsLabel}</span>
                   <div className="flex -space-x-2 overflow-hidden items-center">
                     {pod.members.map((m, idx) => (
                       <div
@@ -704,7 +849,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                       <div
                         key={idx}
                         className="inline-block h-7 w-7 rounded-full ring-2 ring-slate-900 border border-dashed border-slate-600 bg-slate-900/60 text-slate-500 text-[10px] font-bold flex items-center justify-center"
-                        title="Wolne miejsce"
+                        title={copy.freeSeatTitle}
                       >
                         +1
                       </div>
@@ -769,7 +914,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
             <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/60 backdrop-blur-md">
               <div>
                 <div className="text-[11px] font-bold text-emerald-400 flex items-center gap-1 mb-0.5">
-                  <CheckCircle2 className="w-3 h-3" /> Quorum aktywne ({activePodChat.confirmed_count} osób)
+                  <CheckCircle2 className="w-3 h-3" /> {copy.quorumActiveCount(activePodChat.confirmed_count)}
                 </div>
                 <h3 id="pod-chat-drawer-title" className="text-sm font-bold text-white truncate max-w-[260px]">
                   {activePodChat.title || activePodChat.template_name}
@@ -800,7 +945,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
               {chatMessages.length === 0 && !chatError && (
                 <div className="text-center py-12 text-xs text-slate-500 flex flex-col items-center gap-2">
                   <MessageSquare className="w-8 h-8 text-slate-600" />
-                  <span>Brak wcześniejszych wiadomości. Przywitaj się z grupą!</span>
+                  <span>{copy.noMessagesYet}</span>
                 </div>
               )}
 
@@ -809,7 +954,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                 return (
                   <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                     <span className="text-[10px] text-slate-400 mb-1 px-1 font-medium">
-                      {isMe ? 'Ty' : msg.sender_name} · {formatTime(msg.created_at)}
+                      {isMe ? copy.youLabel : msg.sender_name} · {formatTime(msg.created_at)}
                     </span>
                     <div
                       className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-sm ${
@@ -831,8 +976,8 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                 type="text"
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
-                placeholder="Napisz do grupy..."
-                aria-label="Treść wiadomości"
+                placeholder={copy.inputPlaceholder}
+                aria-label={copy.messageContentLabel}
                 className="flex-1 px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
               />
               <button

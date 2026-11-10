@@ -324,6 +324,11 @@ MIGRATIONS: List[Tuple[int, str, str]] = [
         "voice_call_engine",
         open(os.path.join(os.path.dirname(__file__), "migrations", "0012_voice_calls.sql"), "r", encoding="utf-8").read(),
     ),
+    (
+        13,
+        "voice_calls_strict_rebuild",
+        open(os.path.join(os.path.dirname(__file__), "migrations", "0013_voice_calls_strict_rebuild.sql"), "r", encoding="utf-8").read(),
+    ),
 ]
 
 
@@ -382,6 +387,15 @@ class DurableStorage:
                         conn.isolation_level = None
                         try:
                             m0011_micro_pods.upgrade(conn)
+                        finally:
+                            conn.isolation_level = prev_isolation
+                    elif version == 13:
+                        from migrations import m0013_voice_calls_strict_rebuild
+
+                        prev_isolation = conn.isolation_level
+                        conn.isolation_level = None
+                        try:
+                            m0013_voice_calls_strict_rebuild.upgrade(conn)
                         finally:
                             conn.isolation_level = prev_isolation
                     else:

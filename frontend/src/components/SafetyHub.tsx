@@ -12,6 +12,119 @@ import type { User } from '../types';
 import type { Language } from '../locales';
 import { translations } from '../locales';
 
+const SAFETY_COPY: Record<
+  Language,
+  {
+    tierGold: string;
+    tierSilver: string;
+    tierBronze: string;
+    recommended: string;
+    demoVerifying: string;
+    demoBtn: string;
+    idUnavailable: string;
+    demoOnlyNotice: string;
+    locked: string;
+    enabled: string;
+    disabled: string;
+    safeHavenNotice: string;
+    emergencyNotice: string;
+    contactSaved: string;
+    noContact: string;
+    unconfirmedBadge: string;
+    call112: string;
+    verifyFailed: string;
+  }
+> = {
+  pl: {
+    tierGold: 'Złoty',
+    tierSilver: 'Srebrny (ID)',
+    tierBronze: 'Brązowy',
+    recommended: 'Zalecane',
+    demoVerifying: 'Tryb demonstracyjny...',
+    demoBtn: 'Demo: ustaw status testowy (to nie weryfikuje tożsamości)',
+    idUnavailable: 'Weryfikacja tożsamości jest niedostępna — nie połączono prawdziwego dostawcy.',
+    demoOnlyNotice: 'Tylko status demonstracyjny — tożsamość nie została zweryfikowana.',
+    locked: 'Zablokowane',
+    enabled: 'Włączone',
+    disabled: 'Wyłączone',
+    safeHavenNotice:
+      'Gdy Strefa Kobiet jest włączona, Twoje wyjścia będą widoczne wyłącznie dla innych zweryfikowanych kobiet, a na radarze zobaczysz wyjścia dodane przez kobiety.',
+    emergencyNotice:
+      'Konfiguracja kontaktu alarmowego i potwierdzenie jego zgody nie są jeszcze dostępne. Alert SOS nie zastępuje służb ratunkowych — w bezpośrednim zagrożeniu zadzwoń pod 112.',
+    contactSaved: 'Kontakt zapisany — zgoda odbiorcy niepotwierdzona',
+    noContact: 'Brak skonfigurowanego kontaktu',
+    unconfirmedBadge: 'Niepotwierdzony',
+    call112: 'Zadzwoń pod 112 (Numer alarmowy)',
+    verifyFailed: 'Weryfikacja nie powiodła się.',
+  },
+  en: {
+    tierGold: 'Gold',
+    tierSilver: 'Silver (ID)',
+    tierBronze: 'Bronze',
+    recommended: 'Recommended',
+    demoVerifying: 'Demo mode...',
+    demoBtn: 'Demo: set test status (does not verify identity)',
+    idUnavailable: 'Identity verification is unavailable; no genuine provider is connected.',
+    demoOnlyNotice: 'Demo status only — identity was not verified.',
+    locked: 'Locked',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    safeHavenNotice:
+      'When SafeHaven is turned on, your live pings will only be visible to other ID-verified women, and your radar will filter for women-hosted runs only.',
+    emergencyNotice:
+      'Emergency-contact setup and recipient consent confirmation are not available yet. SOS does not replace emergency services; call 112 in immediate danger.',
+    contactSaved: 'Contact on file — recipient consent unconfirmed',
+    noContact: 'No emergency contact configured',
+    unconfirmedBadge: 'Unverified',
+    call112: 'Call 112 (Emergency services)',
+    verifyFailed: 'Verification failed.',
+  },
+  uk: {
+    tierGold: 'Золотий',
+    tierSilver: 'Срібний (ID)',
+    tierBronze: 'Бронзовий',
+    recommended: 'Рекомендовано',
+    demoVerifying: 'Демо-режим...',
+    demoBtn: 'Демо: встановити тестовий статус (не перевіряє особу)',
+    idUnavailable: 'Перевірка особи недоступна — справжній провайдер не підключений.',
+    demoOnlyNotice: 'Лише демо-статус — особу не підтверджено.',
+    locked: 'Заблоковано',
+    enabled: 'Увімкнено',
+    disabled: 'Вимкнено',
+    safeHavenNotice:
+      'Коли безпечний простір увімкнено, ваші виходи бачитимуть лише верифіковані жінки, а на радарі відображатимуться лише події, організовані жінками.',
+    emergencyNotice:
+      'Налаштування екстреного контакту та згода отримувача ще недоступні. Сигнал SOS не замінює екстрені служби — при загрозі телефонуйте 112.',
+    contactSaved: 'Контакт збережено — згоду отримувача не підтверджено',
+    noContact: 'Екстрений контакт не налаштовано',
+    unconfirmedBadge: 'Непідтверджено',
+    call112: 'Зателефонувати 112 (Екстрені служби)',
+    verifyFailed: 'Помилка верифікації.',
+  },
+  ru: {
+    tierGold: 'Золотой',
+    tierSilver: 'Серебряный (ID)',
+    tierBronze: 'Бронзовый',
+    recommended: 'Рекомендуется',
+    demoVerifying: 'Демо-режим...',
+    demoBtn: 'Демо: установить тестовый статус (не проверяет личность)',
+    idUnavailable: 'Проверка личности недоступна — реальный провайдер не подключен.',
+    demoOnlyNotice: 'Только демо-статус — личность не подтверждена.',
+    locked: 'Заблокировано',
+    enabled: 'Включено',
+    disabled: 'Выключено',
+    safeHavenNotice:
+      'Когда безопасное пространство включено, ваши выходы видны только подтверждённым женщинам, а радар показывает только встречи, созданные женщинами.',
+    emergencyNotice:
+      'Настройка экстренного контакта и подтверждение согласия пока недоступны. Сигнал SOS не заменяет экстренные службы — при опасности звоните 112.',
+    contactSaved: 'Контакт сохранён — согласие получателя не подтверждено',
+    noContact: 'Экстренный контакт не настроен',
+    unconfirmedBadge: 'Неподтверждён',
+    call112: 'Позвонить 112 (Экстренные службы)',
+    verifyFailed: 'Ошибка проверки.',
+  },
+};
+
 interface SafetyHubProps {
   currentUser: User;
   lang: Language;
@@ -26,6 +139,7 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
   onToggleSafeHaven,
 }) => {
   const t = translations[lang];
+  const safety = SAFETY_COPY[lang] || SAFETY_COPY.pl;
   const isDemoBuild = import.meta.env.DEV;
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifySuccess, setVerifySuccess] = useState(false);
@@ -39,7 +153,7 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
       setVerifySuccess(true);
       setTimeout(() => setVerifySuccess(false), 3000);
     } catch (e: any) {
-      setVerifyError(e?.message || (lang === 'pl' ? 'Weryfikacja nie powiodła się.' : 'Verification failed.'));
+      setVerifyError(e?.message || safety.verifyFailed);
     } finally {
       setIsVerifying(false);
     }
@@ -72,10 +186,10 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
             }`}
           >
             {currentUser.trust_tier === 'Gold'
-              ? (lang === 'pl' ? 'Złoty' : 'Gold')
+              ? safety.tierGold
               : currentUser.trust_tier === 'Silver'
-              ? (lang === 'pl' ? 'Srebrny (ID)' : 'Silver')
-              : (lang === 'pl' ? 'Brązowy' : 'Bronze')}
+              ? safety.tierSilver
+              : safety.tierBronze}
           </span>
         </h3>
 
@@ -117,7 +231,7 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                 ) : (
                   <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/40">
-                    {lang === 'pl' ? 'Zalecane' : 'Recommended'}
+                    {safety.recommended}
                   </span>
                 )}
               </div>
@@ -131,20 +245,20 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
                   disabled={isVerifying}
                   className="mt-2.5 w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-2 rounded-lg transition shadow-md shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
                 >
-                  {isVerifying ? (lang === 'pl' ? 'Tryb demonstracyjny...' : 'Demo mode...') : (lang === 'pl' ? 'Demo: ustaw status testowy (to nie weryfikuje tożsamości)' : 'Demo: set test status (does not verify identity)')}
+                  {isVerifying ? safety.demoVerifying : safety.demoBtn}
                 </button>
               )}
 
               {!currentUser.is_id_verified && !isDemoBuild && (
                 <p className="mt-2 text-[11px] text-amber-300">
-                  {lang === 'pl' ? 'Weryfikacja tożsamości jest niedostępna — nie połączono prawdziwego dostawcy.' : 'Identity verification is unavailable; no genuine provider is connected.'}
+                  {safety.idUnavailable}
                 </p>
               )}
 
               {verifySuccess && (
                 <p className="text-xs text-emerald-400 font-semibold mt-2 flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  {lang === 'pl' ? 'Tylko status demonstracyjny — tożsamość nie została zweryfikowana.' : 'Demo status only — identity was not verified.'}
+                  {safety.demoOnlyNotice}
                 </p>
               )}
               {verifyError && (
@@ -167,7 +281,7 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
                   <CheckCircle2 className="w-4 h-4 text-amber-400" />
                 ) : (
                   <span className="text-[10px] text-slate-500 font-semibold">
-                    {lang === 'pl' ? 'Zablokowane' : 'Locked'}
+                    {safety.locked}
                   </span>
                 )}
               </div>
@@ -198,13 +312,11 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
                   : 'bg-slate-800 text-slate-400 border-slate-700'
               }`}
             >
-              {currentUser.safe_haven_enabled ? (lang === 'pl' ? 'Włączone' : 'Enabled') : (lang === 'pl' ? 'Wyłączone' : 'Disabled')}
+              {currentUser.safe_haven_enabled ? safety.enabled : safety.disabled}
             </button>
           </div>
           <p className="text-[11px] text-slate-400 leading-relaxed">
-            {lang === 'pl'
-              ? 'Gdy Strefa Kobiet jest włączona, Twoje wyjścia będą widoczne wyłącznie dla innych zweryfikowanych kobiet, a na radarze zobaczysz wyjścia dodane przez kobiety.'
-              : 'When SafeHaven is turned on, your live pings will only be visible to other ID-verified women, and your radar will filter for women-hosted runs only.'}
+            {safety.safeHavenNotice}
           </p>
         </div>
       )}
@@ -216,18 +328,14 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
           <h3 className="text-sm font-bold text-white">{t.emergencyContactTitle}</h3>
         </div>
         <p className="text-xs text-slate-400 leading-relaxed">
-          {lang === 'pl'
-            ? 'Konfiguracja kontaktu alarmowego i potwierdzenie jego zgody nie są jeszcze dostępne. Alert SOS nie zastępuje służb ratunkowych — w bezpośrednim zagrożeniu zadzwoń pod 112.'
-            : 'Emergency-contact setup and recipient consent confirmation are not available yet. SOS does not replace emergency services; call 112 in immediate danger.'}
+          {safety.emergencyNotice}
         </p>
         <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-200">
-            {currentUser.emergency_contact
-              ? (lang === 'pl' ? 'Kontakt zapisany — zgoda odbiorcy niepotwierdzona' : 'Contact on file — recipient consent unconfirmed')
-              : (lang === 'pl' ? 'Brak skonfigurowanego kontaktu' : 'No emergency contact configured')}
+            {currentUser.emergency_contact ? safety.contactSaved : safety.noContact}
           </span>
           <span className="text-[10px] text-amber-300 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-            {lang === 'pl' ? 'Niepotwierdzony' : 'Unverified'}
+            {safety.unconfirmedBadge}
           </span>
         </div>
         <a
@@ -235,7 +343,7 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
           className="w-full py-2.5 px-4 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-200 font-bold text-xs flex items-center justify-center gap-2 transition"
         >
           <PhoneCall className="w-4 h-4 text-rose-400" />
-          <span>{lang === 'pl' ? 'Zadzwoń pod 112 (Numer alarmowy)' : 'Call 112 (Emergency services)'}</span>
+          <span>{safety.call112}</span>
         </a>
       </div>
 

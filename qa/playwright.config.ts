@@ -19,15 +19,34 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
+    launchOptions: {
+      args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
+    },
   },
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          args: [
+            '--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream',
+          ],
+        },
+      },
     },
     {
       name: 'mobile-chrome',
-      use: { ...devices['Pixel 7'] },
+      use: {
+        ...devices['Pixel 7'],
+        launchOptions: {
+          args: [
+            '--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream',
+          ],
+        },
+      },
     },
   ],
 });

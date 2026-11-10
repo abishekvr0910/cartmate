@@ -1,5 +1,10 @@
 import asyncio
+import json
 import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
@@ -298,6 +303,7 @@ def test_voice_disconnect_grace_and_turn_secret_and_compile(clean_db, monkeypatc
     backend_dir = os.path.dirname(__file__)
     py_compile.compile(os.path.join(backend_dir, "voice_manager.py"), doraise=True)
     py_compile.compile(os.path.join(backend_dir, "migrations", "m0011_micro_pods.py"), doraise=True)
+    py_compile.compile(os.path.join(backend_dir, "migrations", "m0013_voice_calls_strict_rebuild.py"), doraise=True)
 
     # Production TURN secret fail-closed check
     monkeypatch.setenv("CARTMATE_ENV", "production")
@@ -372,7 +378,7 @@ def test_voice_rating_validation_duplicate_409_and_strict_schema(clean_db):
     )
     assert res_dup.status_code == 200
 
-    # 5. Verify 0012 tables are STRICT in SQLite and m0011 upgrade set user_version
+    # 5. Verify 0012/0013 tables are STRICT in SQLite and user_version is 13
     from storage import get_db_connection
     conn = get_db_connection(storage.db_path)
     try:
@@ -383,9 +389,217 @@ def test_voice_rating_validation_duplicate_409_and_strict_schema(clean_db):
         for r in rows:
             assert "STRICT" in r["sql"].upper()
         user_ver = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert user_ver >= 11
+        assert user_ver >= 13
     finally:
         conn.close()
+
+
+def test_m0013_strict_voice_table_rebuild_from_v12(tmp_path):
+    """Verifies that m0013_voice_calls_strict_rebuild safely rebuilds a populated v12 non-STRICT database into STRICT tables."""
+    from migrations import m0013_voice_calls_strict_rebuild
+
+    test_db = str(tmp_path / "legacy_v12.db")
+    conn = get_db_connection(test_db)
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    try:
+        # 1. Setup schema migrations table and users table
+        conn.execute("""
+            CREATE TABLE schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at TEXT NOT NULL
+            );
+        """)
+        for v in range(1, 13):
+            conn.execute("INSERT INTO schema_migrations VALUES (?, ?, ?);", (v, f"v{v}", now_str))
+
+        conn.execute("""
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE,
+                phone TEXT,
+                data_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+        """)
+        conn.execute("INSERT INTO users VALUES ('usr_1', 'u1@ex.pl', '+48111', '{}', ?, ?);", (now_str, now_str))
+        conn.execute("INSERT INTO users VALUES ('usr_2', 'u2@ex.pl', '+48222', '{}', ?, ?);", (now_str, now_str))
+
+        # 2. Create non-STRICT legacy v12 tables
+        conn.execute("""
+            CREATE TABLE voice_call_sessions (
+                id                TEXT    PRIMARY KEY,
+                user_a_id         TEXT    NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+                user_b_id         TEXT    NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+                topic             TEXT    NOT NULL,
+                status            TEXT    NOT NULL DEFAULT 'connecting',
+                started_at        TEXT,
+                ended_at          TEXT,
+                duration_seconds  INTEGER NOT NULL DEFAULT 0,
+                end_reason        TEXT,
+                created_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                CHECK (user_a_id <> user_b_id)
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE voice_call_ratings (
+                id          TEXT PRIMARY KEY,
+                session_id  TEXT NOT NULL REFERENCES voice_call_sessions(id) ON DELETE CASCADE,
+                reporter_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+                target_id   TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+                rating      TEXT NOT NULL,
+                report_tag  TEXT,
+                details     TEXT,
+                created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                UNIQUE (session_id, reporter_id)
+            );
+        """)
+        conn.execute("PRAGMA user_version = 12;")
+        conn.commit()
+
+        # Insert populated session and rating rows
+        conn.execute("""
+            INSERT INTO voice_call_sessions (id, user_a_id, user_b_id, topic, status, duration_seconds, end_reason, created_at)
+            VALUES ('call_legacy_1', 'usr_1', 'usr_2', 'Książki', 'completed', 300, 'user_hangup', ?);
+        """, (now_str,))
+        conn.execute("""
+            INSERT INTO voice_call_ratings (id, session_id, reporter_id, target_id, rating, report_tag, details, created_at)
+            VALUES ('vrate_legacy_1', 'call_legacy_1', 'usr_1', 'usr_2', 'respectful', NULL, 'Świetna rozmowa', ?);
+        """, (now_str,))
+        conn.commit()
+
+        # Confirm tables were NOT STRICT initially (checking table tail, avoiding 'RESTRICT' in FKs)
+        for tbl in ("voice_call_sessions", "voice_call_ratings"):
+            sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (tbl,)).fetchone()[0]
+            assert ") STRICT" not in sql.upper()
+
+        # 3. Apply atomic migration 13
+        conn.isolation_level = None
+        m0013_voice_calls_strict_rebuild.upgrade(conn)
+
+        # 4. Assert row preservation
+        sess_rows = conn.execute("SELECT * FROM voice_call_sessions WHERE id='call_legacy_1'").fetchall()
+        assert len(sess_rows) == 1
+        assert sess_rows[0]["topic"] == "Książki"
+        assert sess_rows[0]["duration_seconds"] == 300
+
+        rate_rows = conn.execute("SELECT * FROM voice_call_ratings WHERE id='vrate_legacy_1'").fetchall()
+        assert len(rate_rows) == 1
+        assert rate_rows[0]["details"] == "Świetna rozmowa"
+
+        # 5. Assert tables are now STRICT
+        for tbl in ("voice_call_sessions", "voice_call_ratings"):
+            sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (tbl,)).fetchone()[0]
+            assert ") STRICT" in sql.upper()
+
+        # 6. Assert indexes and schema version
+        indexes = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+        assert "idx_voice_sessions_user_a" in indexes
+        assert "idx_voice_sessions_user_b" in indexes
+        assert "idx_voice_sessions_status" in indexes
+        assert "idx_voice_ratings_target" in indexes
+
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE version=13").fetchone()[0] == 1
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+def test_production_turn_secret_lifespan_startup_guard(tmp_path):
+    """Verifies that entering FastAPI lifespan under CARTMATE_ENV=production fails with RuntimeError if CARTMATE_TURN_SECRET is missing or default."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    backend_dir = Path(__file__).resolve().parent
+    db_path = str(tmp_path / "prod_guard.db").replace("\\", "/")
+
+    # 1. Missing CARTMATE_TURN_SECRET in production -> RuntimeError on lifespan entry
+    code_missing = f"""
+import os
+os.environ["CARTMATE_ENV"] = "production"
+os.environ["CARTMATE_DATABASE_PATH"] = "{db_path}"
+os.environ["CARTMATE_CORS_ALLOWED_ORIGINS"] = "https://cartmate.pl"
+os.environ["CARTMATE_TURN_SECRET"] = ""
+from fastapi.testclient import TestClient
+import main
+try:
+    with TestClient(main.app) as client:
+        pass
+    print("FAILED_EXPECTED_EXCEPTION")
+except RuntimeError as exc:
+    assert "CARTMATE_TURN_SECRET" in str(exc)
+    print("PASSED_MISSING_GUARD")
+"""
+    proc_missing = subprocess.run([sys.executable, "-c", code_missing], cwd=str(backend_dir), capture_output=True, text=True)
+    assert "PASSED_MISSING_GUARD" in proc_missing.stdout, f"Output: {proc_missing.stdout}\nError: {proc_missing.stderr}"
+
+    # 2. Default CARTMATE_TURN_SECRET in production -> RuntimeError on lifespan entry
+    code_default = f"""
+import os
+os.environ["CARTMATE_ENV"] = "production"
+os.environ["CARTMATE_DATABASE_PATH"] = "{db_path}"
+os.environ["CARTMATE_CORS_ALLOWED_ORIGINS"] = "https://cartmate.pl"
+os.environ["CARTMATE_TURN_SECRET"] = "cartmate_ephemeral_turn_secret_dev"
+from fastapi.testclient import TestClient
+import main
+try:
+    with TestClient(main.app) as client:
+        pass
+    print("FAILED_EXPECTED_EXCEPTION")
+except RuntimeError as exc:
+    assert "CARTMATE_TURN_SECRET" in str(exc)
+    print("PASSED_DEFAULT_GUARD")
+"""
+    proc_default = subprocess.run([sys.executable, "-c", code_default], cwd=str(backend_dir), capture_output=True, text=True)
+    assert "PASSED_DEFAULT_GUARD" in proc_default.stdout, f"Output: {proc_default.stdout}\nError: {proc_default.stderr}"
+
+    # 3. Valid production secret -> boots cleanly without error
+    code_valid = f"""
+import os
+os.environ["CARTMATE_ENV"] = "production"
+os.environ["CARTMATE_DATABASE_PATH"] = "{db_path}"
+os.environ["CARTMATE_CORS_ALLOWED_ORIGINS"] = "https://cartmate.pl"
+os.environ["CARTMATE_TURN_SECRET"] = "super_secure_production_secret_32_chars_long"
+from fastapi.testclient import TestClient
+import main
+with TestClient(main.app) as client:
+    res = client.get("/api/health")
+    assert res.status_code == 200
+print("PASSED_VALID_GUARD")
+"""
+    proc_valid = subprocess.run([sys.executable, "-c", code_valid], cwd=str(backend_dir), capture_output=True, text=True)
+    assert "PASSED_VALID_GUARD" in proc_valid.stdout, f"Output: {proc_valid.stdout}\nError: {proc_valid.stderr}"
+
+
+def test_mr02_destination_probe_subprocess():
+    """Runs codex_mr02_destination_probe.cjs inside pytest and asserts bearer token safety."""
+    import json
+    repo_root = Path(__file__).resolve().parent.parent
+    probe_script = repo_root / "qa" / "codex_mr02_destination_probe.cjs"
+    assert probe_script.exists(), f"Probe script not found at {probe_script}"
+
+    proc = subprocess.run(
+        ["node", str(probe_script)],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, f"Probe failed with exit {proc.returncode}:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    data = json.loads(proc.stdout)
+    assert "differentUnapprovedHostname" in data
+    assert "secondUnapprovedHostname" in data
+    assert "missingNativeConfig" in data
+    for key in ("differentUnapprovedHostname", "secondUnapprovedHostname", "missingNativeConfig"):
+        calls = data[key]["calls"]
+        assert len(calls) > 0
+        assert all(call["bearerAttached"] is False for call in calls)
+
+
 
 
 

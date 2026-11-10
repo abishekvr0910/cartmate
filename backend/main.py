@@ -130,6 +130,7 @@ async def _periodic_pod_quorum_sweep() -> None:
 
 @asynccontextmanager
 async def _app_lifespan(_app: FastAPI):
+    voice_call_manager.assert_production_turn_secret_configured()
     try:
         storage.cancel_unconfirmed_pods()
     except Exception:

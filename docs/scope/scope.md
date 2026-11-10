@@ -18,12 +18,12 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 5 | Quorum gated group chat UI | Core Loop | done |
 | 6 | Ten minute remote voice calls | Phase 2 | done |
 | 7 | Voice and pod safety, auth, and block sync | Hardening | done |
-| 8 | Voice signaling resilience, quotas, and abuse controls | Hardening | in-progress |
-| 9 | Navigation safety route, native origin guard, and accessible live UI | Hardening | in-progress |
-| 10 | Continuous integration recovery and regression suite | Hardening | in-progress |
-| 11 | Strict voice table rebuild migration and production TURN startup guard | Audit Closure | planned |
-| 12 | Full four language localization across pod, voice, and safety views | Audit Closure | planned |
-| 13 | End to end pod and voice browser journeys and root pytest isolation | Audit Closure | planned |
+| 8 | Voice signaling resilience, quotas, and abuse controls | Hardening | done |
+| 9 | Navigation safety route, native origin guard, and accessible live UI | Hardening | done |
+| 10 | Continuous integration recovery and regression suite | Hardening | done |
+| 11 | Strict voice table rebuild migration and production TURN startup guard | Audit Closure | done |
+| 12 | Full four language localization across pod, voice, and safety views | Audit Closure | done |
+| 13 | End to end pod and voice browser journeys and root pytest isolation | Audit Closure | done |
 
 ## Foundations
 
@@ -115,69 +115,78 @@ Align voice hangup and disconnect reasons with database check constraints, unify
 - [x] Review it: `/check review voice and pod safety, auth, and block sync`
 - [x] Document it: `/document`
 
-### 8. Voice signaling resilience, quotas, and abuse controls · in-progress
+### 8. Voice signaling resilience, quotas, and abuse controls · done · GA
 Harden peer to peer audio handshake reliability during microphone permission prompts, close quota and cooldown loopholes on reported calls, enforce evening call hours and rate limits, and fail closed on default relay secrets in production.
 **Done when:** early session offers and network candidates buffer safely until microphone setup finishes without listener churn or duplicate hangup requests, reported calls count toward the three call daily cap and ten minute cooldown, inappropriate call ratings escalate to the human moderation queue while honoring the explicit block checkbox, production enforces the evening call window in Warsaw time, pod and voice inputs pass region, length, rate limit, and content safety checks with sanitized errors, expired pods clear automatically without hanging test shutdowns, brief cellular drops get a twelve second grace window that never delays blocks or bans, and production readiness blocks startup if the relay secret uses a development default.
 - [x] Build it: `/develop voice signaling resilience, quotas, and abuse controls`
-- [ ] Verify it: `/check verify voice signaling resilience, quotas, and abuse controls` (closes with Feature 11 lifespan startup guard)
-- [ ] Test it: `/test voice signaling resilience, quotas, and abuse controls`
+- [x] Verify it: `/check verify voice signaling resilience, quotas, and abuse controls`
+- [x] Test it: `/test voice signaling resilience, quotas, and abuse controls`
+- [x] Review it: `/check review voice signaling resilience, quotas, and abuse controls`
+- [x] Document it: `/document`
 code in `backend/voice_manager.py`, `backend/main.py`, `frontend/src/components/VoiceCallHUD.tsx`
 
-### 9. Navigation safety route, native origin guard, and accessible live UI · in-progress
+### 9. Navigation safety route, native origin guard, and accessible live UI · done · Beta
 Restore the five item mobile bottom bar with direct Safety and 112 access, route all pod and voice client calls through the native destination token guard, wire live pod room socket updates, and finish keyboard focus and screen reader polish.
 **Done when:** bottom navigation keeps the Safety button reachable at 320px width while pairing micro pods and ten minute voice calls in a shared social switcher, every pod and voice API helper withholds bearer tokens on unapproved native origins, open pod chat drawers stream live messages and quorum shifts over the realtime socket without browser alert popups, modals trap focus and close on Escape, countdown announcements speak only at five minutes, one minute, and thirty seconds, match chimes respect reduced motion settings, copy supports all four app languages, and heavy feature views load lazily.
 - [x] Build it: `/develop navigation safety route, native origin guard, and accessible live UI`
-- [ ] Verify it: `/check verify navigation safety route, native origin guard, and accessible live UI` (closes with Feature 12 full four language localization)
-- [ ] Test it: `/test navigation safety route, native origin guard, and accessible live UI`
+- [x] Verify it: `/check verify navigation safety route, native origin guard, and accessible live UI`
+- [x] Test it: `/test navigation safety route, native origin guard, and accessible live UI`
+- [x] Review it: `/check review navigation safety route, native origin guard, and accessible live UI`
+- [x] Document it: `/document`
 code in `frontend/src/App.tsx`, `frontend/src/api.ts`, `frontend/src/components/PodFeed.tsx`, `frontend/src/components/VoiceCallHUD.tsx`, `frontend/src/components/SafetyHub.tsx`
 
-### 10. Continuous integration recovery and regression suite · in-progress
+### 10. Continuous integration recovery and regression suite · done · GA
 Restore a green main pipeline by expanding compile checks, backup manifest tallies, native destination probes, and automated backend and browser regression tests across desktop and mobile profiles.
 **Done when:** syntax compile checks include the voice manager and micro pod migration runner, backup manifests record pod and voice session counts alongside users and trips, the native destination probe verifies zero token leakage across all pod and voice helpers, isolated backend suites cover every new safety and block invariant without touching the local development database, and desktop plus mobile browser journeys pass end to end in continuous integration.
 - [x] Build it: `/develop continuous integration recovery and regression suite`
-- [ ] Verify it: `/check verify continuous integration recovery and regression suite` (closes with Feature 13 two user pod and voice Playwright journeys and CI probe execution)
-- [ ] Test it: `/test continuous integration recovery and regression suite`
+- [x] Verify it: `/check verify continuous integration recovery and regression suite`
+- [x] Test it: `/test continuous integration recovery and regression suite`
+- [x] Review it: `/check review continuous integration recovery and regression suite`
+- [x] Document it: `/document`
 code in `backend/test_voice_calls.py`, `ops/cartmate_backup.py`, `ops/test_disaster_recovery.py`, `qa/codex_mr02_destination_probe.cjs`, `qa/tests/safety-and-sos.spec.ts`
 
 ## Phase 4: Final Audit Closure
 
-### 11. Strict voice table rebuild migration and production TURN startup guard · planned · GA
+### 11. Strict voice table rebuild migration and production TURN startup guard · done · GA
 Add an atomic Python migration runner (`m0013_voice_calls_strict_rebuild.py`) following the `m0011_micro_pods.py` pattern to rebuild existing non strict version twelve voice tables into strict SQLite tables without losing session or rating rows, and enforce a hard ASGI lifespan startup refusal when the production environment boots with a missing or default TURN secret.
 **Done when:** `m0013_voice_calls_strict_rebuild.upgrade(conn)` sets `PRAGMA foreign_keys = OFF` before `BEGIN IMMEDIATE`, creates strict replacement tables, copies all rows, drops and renames tables, recreates all four indexes, asserts exact row counts and an empty `PRAGMA foreign_key_check` on both tables, records migration thirteen, and restores `PRAGMA foreign_keys = ON` after commit; both upgrading a populated version twelve database and initializing a fresh version thirteen database pass automated tests; and entering the FastAPI `_app_lifespan` under `CARTMATE_ENV=production` with a missing or default `CARTMATE_TURN_SECRET` raises a `RuntimeError` immediately without breaking non lifespan subprocess tests.
 - [x] Design it (spec): `/architect strict voice table rebuild migration and production TURN startup guard`
-- [ ] Build it: `/develop strict voice table rebuild migration and production TURN startup guard`
-   - [ ] Implement `backend/migrations/0013_voice_calls_strict_rebuild.sql` and atomic Python runner `backend/migrations/m0013_voice_calls_strict_rebuild.py` wired into `storage.py:apply_migrations()`
-   - [ ] Enforce `assert_production_turn_secret_configured()` inside FastAPI `_app_lifespan` in `backend/main.py`
-   - [ ] Test populated v12 to v13 table rebuild, fresh v13 initialization, and subprocess lifespan refusal on missing and default TURN secrets
-- [ ] Verify it: `/check verify strict voice table rebuild migration and production TURN startup guard`
-- [ ] Test it: `/test strict voice table rebuild migration and production TURN startup guard`
-- [ ] Review it: `/check review strict voice table rebuild migration and production TURN startup guard`
-- [ ] Document it: `/document`
+- [x] Build it: `/develop strict voice table rebuild migration and production TURN startup guard`
+   - [x] Implement `backend/migrations/0013_voice_calls_strict_rebuild.sql` and atomic Python runner `backend/migrations/m0013_voice_calls_strict_rebuild.py` wired into `storage.py:apply_migrations()`
+   - [x] Enforce `assert_production_turn_secret_configured()` inside FastAPI `_app_lifespan` in `backend/main.py`
+   - [x] Test populated v12 to v13 table rebuild, fresh v13 initialization, and subprocess lifespan refusal on missing and default TURN secrets
+- [x] Verify it: `/check verify strict voice table rebuild migration and production TURN startup guard`
+- [x] Test it: `/test strict voice table rebuild migration and production TURN startup guard`
+- [x] Review it: `/check review strict voice table rebuild migration and production TURN startup guard`
+- [x] Document it: `/document`
 Spec 0013 in `docs/specs/0013-final-audit-closure.md`
 
-### 12. Full four language localization across pod, voice, and safety views · planned
+### 12. Full four language localization across pod, voice, and safety views · done · Beta
 Eliminate all remaining hardcoded Polish strings in the micro pod feed and ten minute voice HUD, expand the safety hub from two languages (`pl` and `en`) to all four supported locales (`pl`, `en`, `uk`, `ru`), and add automated language switch assertions.
 **Done when:** switching the header language selector across Polish, English, Ukrainian, and Russian updates every visible label, template title, value prop pill, venue field, seat counter, chat drawer state, in call control, block modal, quota widget, privacy rule, icebreaker prompt, rating modal option, and safety hub card with zero hardcoded Polish text or `pl` only ternary fallbacks remaining in `PodFeed.tsx`, `VoiceCallHUD.tsx`, or `SafetyHub.tsx`, verified by automated tests across all four locales.
 - [x] Design it (spec): `/architect full four language localization across pod, voice, and safety views`
-- [ ] Build it: `/develop full four language localization across pod, voice, and safety views`
-   - [ ] Complete `POD_COPY` across `pl`, `en`, `uk`, and `ru` for all remaining strings in `frontend/src/components/PodFeed.tsx`
-   - [ ] Complete `VOICE_COPY` across `pl`, `en`, `uk`, and `ru` for all in call, lobby, icebreaker, block, and rating strings in `frontend/src/components/VoiceCallHUD.tsx`
-   - [ ] Replace binary `lang === 'pl'` ternaries in `frontend/src/components/SafetyHub.tsx` with a four language `SAFETY_COPY` dictionary and add automated locale switch assertions
-- [ ] Verify it: `/check verify full four language localization across pod, voice, and safety views`
-- [ ] Test it: `/test full four language localization across pod, voice, and safety views`
+- [x] Build it: `/develop full four language localization across pod, voice, and safety views`
+   - [x] Complete `POD_COPY` across `pl`, `en`, `uk`, and `ru` for all remaining strings in `frontend/src/components/PodFeed.tsx`
+   - [x] Complete `VOICE_COPY` across `pl`, `en`, `uk`, and `ru` for all in call, lobby, icebreaker, block, and rating strings in `frontend/src/components/VoiceCallHUD.tsx`
+   - [x] Replace binary `lang === 'pl'` ternaries in `frontend/src/components/SafetyHub.tsx` with a four language `SAFETY_COPY` dictionary and add automated locale switch assertions
+- [x] Verify it: `/check verify full four language localization across pod, voice, and safety views`
+- [x] Test it: `/test full four language localization across pod, voice, and safety views`
+- [x] Review it: `/check review full four language localization across pod, voice, and safety views`
+- [x] Document it: `/document`
 Spec 0013 in `docs/specs/0013-final-audit-closure.md`
 
-### 13. End to end pod and voice browser journeys and root pytest isolation · planned · GA
+### 13. End to end pod and voice browser journeys and root pytest isolation · done · GA
 Add a dedicated multi user Playwright test suite (`qa/tests/pods-and-voice.spec.ts`) covering real time micro pod quorum unlock, two user group chat delivery, and two user WebRTC voice matching, hangup, and post call rating, execute `codex_mr02_destination_probe.cjs` inside the automated pytest pass from the repository root, and isolate `ops/test_pilot_preflight.py` so root level `pytest` passes cleanly.
 **Done when:** `qa/tests/pods-and-voice.spec.ts` uses two isolated browser contexts to verify that a third member joining a pod unlocks quorum live for both members, a chat message sent by user A renders live in user B's open drawer, and two matched callers with fake media streams connect inside an active call window, hang up, and submit a post call rating on desktop and mobile viewports; `codex_mr02_destination_probe.cjs` runs via subprocess with `cwd` at the repository root inside `pytest`; and `ops/test_pilot_preflight.py` runs its real app check in an isolated subprocess (or reloads `config` and `main`) so running `pytest` from the repository root passes every backend and ops test together.
 - [x] Design it (spec): `/architect end to end pod and voice browser journeys and root pytest isolation`
-- [ ] Build it: `/develop end to end pod and voice browser journeys and root pytest isolation`
-   - [ ] Create `qa/tests/pods-and-voice.spec.ts` with two context pod quorum plus live chat delivery and two context voice match, hangup, and rating journeys
-   - [ ] Add a repository root subprocess test invoking `node qa/codex_mr02_destination_probe.cjs` inside `backend/test_voice_calls.py`
-   - [ ] Isolate `test_preflight_real_fastapi_app` in `ops/test_pilot_preflight.py` from cached `main.CARTMATE_ENV` state so root `pytest` passes
-- [ ] Verify it: `/check verify end to end pod and voice browser journeys and root pytest isolation`
-- [ ] Test it: `/test end to end pod and voice browser journeys and root pytest isolation`
-- [ ] Review it: `/check review end to end pod and voice browser journeys and root pytest isolation`
+- [x] Build it: `/develop end to end pod and voice browser journeys and root pytest isolation`
+   - [x] Create `qa/tests/pods-and-voice.spec.ts` with two context pod quorum plus live chat delivery and two context voice match, hangup, and rating journeys
+   - [x] Add a repository root subprocess test invoking `node qa/codex_mr02_destination_probe.cjs` inside `backend/test_voice_calls.py`
+   - [x] Isolate `test_preflight_real_fastapi_app` in `ops/test_pilot_preflight.py` from cached `main.CARTMATE_ENV` state so root `pytest` passes
+- [x] Verify it: `/check verify end to end pod and voice browser journeys and root pytest isolation`
+- [x] Test it: `/test end to end pod and voice browser journeys and root pytest isolation`
+- [x] Review it: `/check review end to end pod and voice browser journeys and root pytest isolation`
+- [x] Document it: `/document`
 - [ ] Document it: `/document`
 Spec 0013 in `docs/specs/0013-final-audit-closure.md`
 
