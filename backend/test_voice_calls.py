@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from main import app, voice_call_manager
-from storage import DurableStorage, get_db_connection
+from storage import DurableStorage, get_db_connection, storage
 
 client = TestClient(app)
 
@@ -240,3 +240,53 @@ def test_voice_rating_api_and_block(clean_db):
     assert row["rating"] == "respectful"
     assert "kulturalna" in row["details"]
     conn.close()
+
+
+def test_voice_terminate_reasons_and_reported_quota(clean_db):
+    async def _test():
+        # Match call
+        status_z, call_z = await voice_call_manager.enqueue_caller("usr_zuzanna", "Podróże", None)
+        status_j, call_j = await voice_call_manager.enqueue_caller("usr_jakub", "Podróże", None)
+        assert status_j == "MATCHED"
+        call_id = call_j["id"]
+
+        # Unauthorized third party cannot terminate call
+        unauth_term = await voice_call_manager.terminate_call(call_id, initiator_user_id="usr_marek")
+        assert unauth_term == {}
+        assert call_id in voice_call_manager.active_calls
+
+        # User blocked termination maps cleanly to 'blocked' and writes block
+        term_res = await voice_call_manager.terminate_call(call_id, initiator_user_id="usr_zuzanna", reason="user_blocked", block_peer=True)
+        assert term_res["reason"] == "blocked"
+
+        session = storage.get_voice_session(call_id)
+        assert session["status"] == "reported"
+        assert session["end_reason"] == "blocked"
+
+        # Reported calls must count toward daily limit and cooldown
+        daily_count = storage.get_daily_voice_call_count("usr_jakub")
+        assert daily_count >= 1
+
+        sec_since = storage.get_seconds_since_last_voice_call("usr_jakub")
+        assert sec_since is not None and sec_since < 60
+
+        # Inappropriate rating creates a moderation report
+        headers_zuzanna = {"Authorization": "Bearer token_zuzanna"}
+        res_rep = client.post(
+            f"/api/voice/calls/{call_id}/rate",
+            headers=headers_zuzanna,
+            json={
+                "rating": "inappropriate",
+                "report_tag": "harassment",
+                "details": "Wulgarne zachowanie podczas rozmowy.",
+                "block_peer": True
+            }
+        )
+        assert res_rep.status_code == 200
+        import database
+        reports = [r for r in database.REPORTS.values() if r.reported_user_id == "usr_jakub"]
+        assert len(reports) >= 1
+        assert reports[-1].category == "harassment"
+
+    asyncio.run(_test())
+

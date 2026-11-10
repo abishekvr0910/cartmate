@@ -197,11 +197,11 @@ export function clearStoredSession() {
   }
 }
 
-export function getAuthHeaders(targetUrl?: string): Record<string, string> {
+export function getAuthHeaders(targetUrl?: string, overrideToken?: string | null): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  const token = getStoredToken();
+  const token = overrideToken !== undefined ? overrideToken : getStoredToken();
   if (!token) return headers;
 
   const target = targetUrl || BASE_URL;
@@ -1107,31 +1107,31 @@ export async function revokeOtherSessions(): Promise<{ status: string; revoked_c
 // --- Micro-Pods & Third Places API ---
 
 export async function fetchPodTemplates(): Promise<ActivityTemplate[]> {
-  const res = await fetch(`${BASE_URL}/pods/templates`);
+  const url = `${BASE_URL}/pods/templates`;
+  const res = await fetch(url, { headers: getAuthHeaders(url) });
   if (!res.ok) throw new Error('Nie udało się pobrać szablonów aktywności');
   return res.json();
 }
 
 export async function fetchThirdPlaces(city?: string): Promise<ThirdPlace[]> {
   const url = city ? `${BASE_URL}/pods/places?city=${encodeURIComponent(city)}` : `${BASE_URL}/pods/places`;
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: getAuthHeaders(url) });
   if (!res.ok) throw new Error('Nie udało się pobrać miejsc zbiórek');
   return res.json();
 }
 
 export async function fetchPodFeed(city?: string, token?: string | null): Promise<Pod[]> {
   const url = city ? `${BASE_URL}/pods/feed?city=${encodeURIComponent(city)}` : `${BASE_URL}/pods/feed`;
-  const headers: Record<string, string> = {};
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await fetch(url, { headers });
+  const res = await fetch(url, { headers: getAuthHeaders(url, token) });
   if (!res.ok) throw new Error('Nie udało się pobrać listy podów');
   return res.json();
 }
 
-export async function joinPod(podId: number, token: string): Promise<Pod> {
-  const res = await fetch(`${BASE_URL}/pods/${podId}/join`, {
+export async function joinPod(podId: number, token?: string | null): Promise<Pod> {
+  const url = `${BASE_URL}/pods/${podId}/join`;
+  const res = await fetch(url, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
+    headers: getAuthHeaders(url, token),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -1140,10 +1140,11 @@ export async function joinPod(podId: number, token: string): Promise<Pod> {
   return res.json();
 }
 
-export async function leavePod(podId: number, token: string): Promise<Pod> {
-  const res = await fetch(`${BASE_URL}/pods/${podId}/leave`, {
+export async function leavePod(podId: number, token?: string | null): Promise<Pod> {
+  const url = `${BASE_URL}/pods/${podId}/leave`;
+  const res = await fetch(url, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
+    headers: getAuthHeaders(url, token),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -1152,9 +1153,10 @@ export async function leavePod(podId: number, token: string): Promise<Pod> {
   return res.json();
 }
 
-export async function fetchPodMessages(podId: number, token: string): Promise<PodMessage[]> {
-  const res = await fetch(`${BASE_URL}/pods/${podId}/messages`, {
-    headers: { Authorization: `Bearer ${token}` },
+export async function fetchPodMessages(podId: number, token?: string | null): Promise<PodMessage[]> {
+  const url = `${BASE_URL}/pods/${podId}/messages`;
+  const res = await fetch(url, {
+    headers: getAuthHeaders(url, token),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -1163,13 +1165,11 @@ export async function fetchPodMessages(podId: number, token: string): Promise<Po
   return res.json();
 }
 
-export async function sendPodMessage(podId: number, text: string, token: string): Promise<PodMessage> {
-  const res = await fetch(`${BASE_URL}/pods/${podId}/messages`, {
+export async function sendPodMessage(podId: number, text: string, token?: string | null): Promise<PodMessage> {
+  const url = `${BASE_URL}/pods/${podId}/messages`;
+  const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(url, token),
     body: JSON.stringify({ text }),
   });
   if (!res.ok) {
@@ -1179,9 +1179,10 @@ export async function sendPodMessage(podId: number, text: string, token: string)
   return res.json();
 }
 
-export async function fetchVoiceStatus(token: string): Promise<VoiceStatusResponse> {
-  const res = await fetch(`${BASE_URL}/voice/status`, {
-    headers: { Authorization: `Bearer ${token}` },
+export async function fetchVoiceStatus(token?: string | null): Promise<VoiceStatusResponse> {
+  const url = `${BASE_URL}/voice/status`;
+  const res = await fetch(url, {
+    headers: getAuthHeaders(url, token),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -1193,14 +1194,12 @@ export async function fetchVoiceStatus(token: string): Promise<VoiceStatusRespon
 export async function rateVoiceCall(
   callId: string,
   payload: VoiceRatingPayload,
-  token: string
+  token?: string | null
 ): Promise<{ success: boolean; rating_id: string; call_id: string }> {
-  const res = await fetch(`${BASE_URL}/voice/calls/${callId}/rate`, {
+  const url = `${BASE_URL}/voice/calls/${callId}/rate`;
+  const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(url, token),
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -1212,15 +1211,13 @@ export async function rateVoiceCall(
 
 export async function hangupVoiceCall(
   callId: string,
-  token: string,
+  token?: string | null,
   blockPeer = false
 ): Promise<{ success: boolean }> {
-  const res = await fetch(`${BASE_URL}/voice/calls/${callId}/hangup`, {
+  const url = `${BASE_URL}/voice/calls/${callId}/hangup`;
+  const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(url, token),
     body: JSON.stringify({ reason: 'user_hangup', block_peer: blockPeer }),
   });
   if (!res.ok) {

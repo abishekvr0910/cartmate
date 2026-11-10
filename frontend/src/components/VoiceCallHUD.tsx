@@ -57,6 +57,13 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const countdownIntervalRef = useRef<number | null>(null);
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const pendingOfferRef = useRef<{ sdp: string; call_id?: string } | null>(null);
+  const activeCallIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeCallIdRef.current = activeCallId;
+  }, [activeCallId]);
 
   // Load Status
   const loadStatus = useCallback(async () => {
@@ -83,6 +90,8 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
 
   // Cleanup WebRTC & Audio
   const cleanupMedia = useCallback(() => {
+    pendingCandidatesRef.current = [];
+    pendingOfferRef.current = null;
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
@@ -105,6 +114,19 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
     }
     setAudioLevel(0);
   }, []);
+
+  const flushPendingCandidates = async (pc: RTCPeerConnection) => {
+    if (!pc.remoteDescription) return;
+    const queued = [...pendingCandidatesRef.current];
+    pendingCandidatesRef.current = [];
+    for (const cand of queued) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(cand));
+      } catch (e) {
+        console.warn('Error applying queued ICE candidate:', e);
+      }
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -226,6 +248,18 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
             call_id: callId,
             sdp: offer.sdp,
           });
+        } else if (role === 'answerer' && pendingOfferRef.current) {
+          const offerData = pendingOfferRef.current;
+          pendingOfferRef.current = null;
+          await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: offerData.sdp }));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          realtime.send({
+            action: 'voice.call_answer',
+            call_id: callId,
+            sdp: answer.sdp,
+          });
+          await flushPendingCandidates(pc);
         }
       } catch (err: any) {
         setErrorMsg('Błąd dostępu do mikrofonu: ' + (err.message || 'Wymagane uprawnienia'));
@@ -252,20 +286,24 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
 
     const unsubOffer = realtime.on('voice.call_offer', async (payload: any, env: any) => {
       const data = env?.sdp ? env : payload;
+      if (!data?.sdp) return;
       const pc = peerConnectionRef.current;
-      if (pc && data?.sdp) {
+      if (pc) {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: data.sdp }));
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           realtime.send({
             action: 'voice.call_answer',
-            call_id: data.call_id || activeCallId,
+            call_id: data.call_id || activeCallIdRef.current,
             sdp: answer.sdp,
           });
+          await flushPendingCandidates(pc);
         } catch (e) {
           console.error('Error handling offer:', e);
         }
+      } else {
+        pendingOfferRef.current = data;
       }
     });
 
@@ -275,6 +313,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
       if (pc && data?.sdp) {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: data.sdp }));
+          await flushPendingCandidates(pc);
         } catch (e) {
           console.error('Error handling answer:', e);
         }
@@ -283,13 +322,16 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
 
     const unsubIce = realtime.on('voice.call_ice_candidate', async (payload: any, env: any) => {
       const data = env?.candidate ? env : payload;
+      if (!data?.candidate) return;
       const pc = peerConnectionRef.current;
-      if (pc && data?.candidate) {
+      if (pc && pc.remoteDescription) {
         try {
           await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
         } catch (e) {
           console.error('Error adding ICE candidate:', e);
         }
+      } else {
+        pendingCandidatesRef.current.push(data.candidate);
       }
     });
 
@@ -312,7 +354,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
       unsubTimeout();
       unsubCallEnded();
     };
-  }, [activeCallId, initializeWebRtc, handleCallEnded]);
+  }, [initializeWebRtc, handleCallEnded]);
 
   // Mute / Unmute
   const toggleMute = () => {
@@ -629,10 +671,17 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
           <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-semibold text-slate-400">Status okna rozmów</span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Otwarte (18:00 - 23:00)
-              </span>
+              {statusData?.window_open ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Otwarte (18:00 - 23:00)
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  Zamknięte (18:00 - 23:00)
+                </span>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-800/60">
@@ -700,6 +749,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
             <button
               onClick={handleJoinQueue}
               disabled={
+                Boolean(statusData && !statusData.window_open) ||
                 Boolean(statusData?.cooldown_remaining_seconds && statusData.cooldown_remaining_seconds > 0) ||
                 Boolean(statusData?.daily_calls_used && statusData.daily_calls_used >= 3)
               }
@@ -709,6 +759,8 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
               <span>
                 {statusData?.cooldown_remaining_seconds && statusData.cooldown_remaining_seconds > 0
                   ? `Przerwa: ${statusData.cooldown_remaining_seconds}s`
+                  : statusData && !statusData.window_open
+                  ? 'Okno rozmów zamknięte (18:00 - 23:00)'
                   : statusData?.daily_calls_used && statusData.daily_calls_used >= 3
                   ? 'Osiągnięto limit dzienny (3/3)'
                   : 'Połącz z kimś teraz (10 min)'}

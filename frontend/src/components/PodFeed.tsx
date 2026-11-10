@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Pod, PodMessage } from '../types';
 import { fetchPodFeed, joinPod, leavePod, fetchPodMessages, sendPodMessage } from '../api';
+import { realtime } from '../realtime/socket';
 import {
   Users,
   MapPin,
@@ -27,6 +28,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
   const [pods, setPods] = useState<Pod[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
   const [selectedCity, setSelectedCity] = useState<string>('Wszystkie');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
@@ -56,29 +58,55 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
     void loadFeed();
   }, [loadFeed]);
 
+  // Realtime subscription to active pod chat
+  useEffect(() => {
+    if (!activePodChat || !token) return;
+    const channel = `pod:${activePodChat.id}`;
+    realtime.subscribe(channel);
+
+    const unsubMsg = realtime.on('pod_chat_message', (payload: any, env: any) => {
+      const msg = env?.message || payload?.message || payload;
+      if (msg && msg.pod_id === activePodChat.id) {
+        setChatMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+      }
+    });
+
+    return () => {
+      unsubMsg();
+      realtime.unsubscribe(channel);
+    };
+  }, [activePodChat, token]);
+
   const handleJoin = async (pod: Pod) => {
     if (!token) {
       onRequireAuth?.();
       return;
     }
+    setActionFeedback(null);
     try {
       await joinPod(pod.id, token);
+      setActionFeedback({ type: 'success', message: 'Dołączono do poda!' });
       await loadFeed();
     } catch (err: any) {
-      alert(err.message || 'Błąd dołączania do poda');
+      setActionFeedback({ type: 'error', message: err.message || 'Błąd dołączania do poda' });
     }
   };
 
   const handleLeave = async (pod: Pod) => {
     if (!token) return;
+    setActionFeedback(null);
     try {
       await leavePod(pod.id, token);
       if (activePodChat?.id === pod.id) {
         setActivePodChat(null);
       }
+      setActionFeedback({ type: 'success', message: 'Opuszczono poda.' });
       await loadFeed();
     } catch (err: any) {
-      alert(err.message || 'Błąd opuszczania poda');
+      setActionFeedback({ type: 'error', message: err.message || 'Błąd opuszczania poda' });
     }
   };
 
@@ -269,6 +297,35 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
           </button>
         ))}
       </div>
+
+      {/* Action Feedback Banner */}
+      {actionFeedback && (
+        <div
+          role="status"
+          className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 mb-4 text-xs transition-all ${
+            actionFeedback.type === 'error'
+              ? 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+              : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {actionFeedback.type === 'error' ? (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            )}
+            <span className="font-medium">{actionFeedback.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionFeedback(null)}
+            aria-label="Zamknij powiadomienie"
+            className="text-slate-400 hover:text-white min-h-[32px] min-w-[32px] flex items-center justify-center cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Loading & Error States */}
       {loading && (

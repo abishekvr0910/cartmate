@@ -19,6 +19,19 @@ QUEUE_TIMEOUT_SECONDS = 60           # 60 seconds matching timeout
 CALL_COOLDOWN_SECONDS = 600          # 10 minutes cooldown between calls
 DAILY_CALL_LIMIT = 3                 # 3 calls per 24 hours
 
+
+def is_voice_window_open() -> bool:
+    """Returns True if the voice call window is open (18:00 - 23:00 Warsaw time in production)."""
+    enforce = os.getenv("CARTMATE_VOICE_WINDOW_ENFORCED", "").lower() in ("1", "true") or os.getenv("CARTMATE_ENV") == "production"
+    if not enforce:
+        return True
+    try:
+        from zoneinfo import ZoneInfo
+        warsaw_hour = datetime.now(ZoneInfo("Europe/Warsaw")).hour
+        return 18 <= warsaw_hour < 23
+    except Exception:
+        return True
+
 @dataclass
 class QueueEntry:
     user_id: str
@@ -72,6 +85,10 @@ class VoiceCallManager:
         Enforces daily quotas, cooldowns, single-active call invariant, and mutual block checks.
         """
         async with self.lock:
+            # 0. Evening window check
+            if not is_voice_window_open():
+                return "WINDOW_CLOSED", None
+
             # 1. Already in an active call check
             if user_id in self.user_to_call:
                 return "ALREADY_IN_CALL", None
@@ -248,6 +265,10 @@ class VoiceCallManager:
             if not call or call["status"] == "active":
                 return
 
+            if user_id not in (call["user_a_id"], call["user_b_id"]):
+                logger.warning(f"Unauthorized call_connected attempt for {call_id} by {user_id}")
+                return
+
             now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             call["status"] = "active"
             call["started_at"] = now_str
@@ -307,13 +328,19 @@ class VoiceCallManager:
             if not call:
                 return {}
 
+            user_a = call["user_a_id"]
+            user_b = call["user_b_id"]
+
+            if initiator_user_id and initiator_user_id not in (user_a, user_b):
+                logger.warning(f"Unauthorized terminate_call attempt for {call_id} by {initiator_user_id}")
+                # Restore call in active_calls so authorized participants are not disrupted
+                self.active_calls[call_id] = call
+                return {}
+
             # Cancel countdown timer
             timer_task = self.call_timer_tasks.pop(call_id, None)
             if timer_task and not timer_task.done():
                 timer_task.cancel()
-
-            user_a = call["user_a_id"]
-            user_b = call["user_b_id"]
 
             self.user_to_call.pop(user_a, None)
             self.user_to_call.pop(user_b, None)
@@ -323,7 +350,23 @@ class VoiceCallManager:
             duration_seconds = int(time.time() - started_epoch) if started_epoch else 0
             now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            final_status = "reported" if block_peer else "completed"
+            # Map to allowed end_reason in 0012_voice_calls.sql:
+            # ('timeout_10min', 'user_hangup', 'blocked', 'connection_failed', 'cancelled')
+            if block_peer or reason in ("blocked", "user_blocked"):
+                clean_reason = "blocked"
+                final_status = "reported"
+            elif reason in ("peer_disconnected", "connection_dropped", "connection_failed"):
+                clean_reason = "connection_failed"
+                final_status = "dropped"
+            elif reason == "timeout_10min":
+                clean_reason = "timeout_10min"
+                final_status = "completed"
+            elif reason == "cancelled":
+                clean_reason = "cancelled"
+                final_status = "cancelled"
+            else:
+                clean_reason = "user_hangup"
+                final_status = "completed"
 
             # 1. Update database record
             self.storage.update_voice_session(
@@ -331,20 +374,16 @@ class VoiceCallManager:
                 status=final_status,
                 ended_at=now_str,
                 duration_seconds=duration_seconds,
-                end_reason=reason,
+                end_reason=clean_reason,
             )
 
             # 2. Atomic block commit if requested
-            if block_peer and initiator_user_id:
+            if (block_peer or clean_reason == "blocked") and initiator_user_id:
                 target_id = user_b if initiator_user_id == user_a else user_a
                 try:
-                    conn = get_db_connection(self.storage.db_path)
-                    conn.execute(
-                        "INSERT OR IGNORE INTO user_blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?);",
-                        (initiator_user_id, target_id, now_str),
-                    )
-                    conn.commit()
-                    conn.close()
+                    import database
+                    database.block_user(initiator_user_id, target_id)
+                    self.storage.separate_blocked_user_from_pods(initiator_user_id, target_id)
                     logger.info(f"Voice call {call_id}: {initiator_user_id} blocked {target_id}")
                 except Exception as exc:
                     logger.error(f"Error persisting block during voice hangup: {exc}")
@@ -353,7 +392,7 @@ class VoiceCallManager:
             payload = {
                 "type": "voice.call_ended",
                 "call_id": call_id,
-                "reason": reason,
+                "reason": clean_reason,
                 "duration_seconds": duration_seconds,
                 "ended_at": now_str,
             }

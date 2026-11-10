@@ -35,6 +35,7 @@ import { PrivacyBanner } from './components/PrivacyBanner';
 import { PilotAgeConsole } from './components/PilotAgeConsole';
 import { PodFeed } from './components/PodFeed';
 import { VoiceCallHUD } from './components/VoiceCallHUD';
+import { Users, Sparkles, PhoneCall } from 'lucide-react';
 import type { ChatMessage, CommunityStats, LivePing, Trip, User } from './types';
 import type { Language } from './locales';
 import { translations } from './locales';
@@ -659,6 +660,51 @@ export const App: React.FC = () => {
             <div role="status" className="mx-3 my-2 flex items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
               <span>{translations[lang].tripCancelledNotice}</span>
               <button type="button" onClick={() => setTripCancelledNotice(false)} aria-label={translations[lang].dismissNotice} className="min-h-11 min-w-11 rounded-lg text-xl hover:bg-amber-500/10">×</button>
+            </div>
+          )}
+
+          {/* Discovery Segmented Switcher (1:1 Outings, Micro-Pods 3-5, 10' Voice Calls) */}
+          {['radar', 'pods', 'voice'].includes(activeTab) && (
+            <div className="mx-4 my-2.5 flex items-center justify-center p-1 bg-slate-900/90 border border-slate-800 rounded-2xl max-w-md mx-auto shadow-sm">
+              <button
+                type="button"
+                onClick={() => setActiveTab('radar')}
+                aria-current={activeTab === 'radar' ? 'page' : undefined}
+                className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  activeTab === 'radar'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>{lang === 'pl' ? 'Wyjścia 1:1' : '1:1 Outings'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('pods')}
+                aria-current={activeTab === 'pods' ? 'page' : undefined}
+                className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  activeTab === 'pods'
+                    ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{lang === 'pl' ? 'Pody 3-5' : 'Pods 3-5'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('voice')}
+                aria-current={activeTab === 'voice' ? 'page' : undefined}
+                className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  activeTab === 'voice'
+                    ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30 shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <PhoneCall className="w-3.5 h-3.5" />
+                <span>{lang === 'pl' ? "Głos 10'" : "Voice 10'"}</span>
+              </button>
             </div>
           )}
           {activeTab === 'pods' && (

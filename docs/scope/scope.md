@@ -17,6 +17,10 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 4 | Mobile first micro pod feed UI | Core Loop | done |
 | 5 | Quorum gated group chat UI | Core Loop | done |
 | 6 | Ten minute remote voice calls | Phase 2 | done |
+| 7 | Voice and pod safety, auth, and block sync | Hardening | done |
+| 8 | Voice signaling resilience, quotas, and abuse controls | Hardening | done |
+| 9 | Navigation safety route, native origin guard, and accessible live UI | Hardening | done |
+| 10 | Continuous integration recovery and regression suite | Hardening | done |
 
 ## Foundations
 
@@ -96,6 +100,44 @@ Spontaneous peer to peer voice calls with automatic countdown timer and zero phy
 - [x] Verify it: `/check verify ten minute remote voice calls`
 - [x] Test it: `/test ten minute remote voice calls`
 code in `backend/migrations/0012_voice_calls.sql`, `backend/voice_manager.py`, `backend/main.py`, `backend/test_voice_calls.py`, `frontend/src/components/VoiceCallHUD.tsx`
+
+## Phase 3: Pilot Safety Hardening and CI Recovery
+
+### 7. Voice and pod safety, auth, and block sync · done · GA
+Align voice hangup and disconnect reasons with database check constraints, unify bidirectional user blocking across memory, persistent storage, active voice calls, and shared pods, enforce eighteen plus pilot age admission, and lock down pod roster and moderator place routes.
+**Done when:** one tap end and block and peer socket drops save cleanly without constraint errors, blocking separates both users across pods, voice, and core feeds by withdrawing the blocker as left rather than kicking existing pod members, unverified or unauthenticated callers are rejected on pod and voice discovery and chat while leave, hangup, and rate stay open even after seven day attestation expiry, only confirmed call participants can mark a call connected or hang it up, and only moderators can add verified third places or trigger pod sweeps.
+- [x] Build it: `/develop voice and pod safety, auth, and block sync`
+- [x] Verify it: `/check verify voice and pod safety, auth, and block sync`
+- [x] Test it: `/test voice and pod safety, auth, and block sync`
+- [x] Review it: `/check review voice and pod safety, auth, and block sync`
+- [x] Document it: `/document`
+
+### 8. Voice signaling resilience, quotas, and abuse controls · done
+Harden peer to peer audio handshake reliability during microphone permission prompts, close quota and cooldown loopholes on reported calls, enforce evening call hours and rate limits, and fail closed on default relay secrets in production.
+**Done when:** early session offers and network candidates buffer safely until microphone setup finishes without listener churn or duplicate hangup requests, reported calls count toward the three call daily cap and ten minute cooldown, inappropriate call ratings escalate to the human moderation queue while honoring the explicit block checkbox, production enforces the evening call window in Warsaw time, pod and voice inputs pass region, length, rate limit, and content safety checks with sanitized errors, expired pods clear automatically without hanging test shutdowns, brief cellular drops get a twelve second grace window that never delays blocks or bans, and production readiness blocks startup if the relay secret uses a development default.
+- [x] Build it: `/develop voice signaling resilience, quotas, and abuse controls`
+- [x] Verify it: `/check verify voice signaling resilience, quotas, and abuse controls`
+- [x] Test it: `/test voice signaling resilience, quotas, and abuse controls`
+
+### 9. Navigation safety route, native origin guard, and accessible live UI · done
+Restore the five item mobile bottom bar with direct Safety and 112 access, route all pod and voice client calls through the native destination token guard, wire live pod room socket updates, and finish keyboard focus and screen reader polish.
+**Done when:** bottom navigation keeps the Safety button reachable at 320px width while pairing micro pods and ten minute voice calls in a shared social switcher, every pod and voice API helper withholds bearer tokens on unapproved native origins, open pod chat drawers stream live messages and quorum shifts over the realtime socket without browser alert popups, modals trap focus and close on Escape, countdown announcements speak only at five minutes, one minute, and thirty seconds, match chimes respect reduced motion settings, copy supports all four app languages, and heavy feature views load lazily.
+- [x] Build it: `/develop navigation safety route, native origin guard, and accessible live UI`
+- [x] Verify it: `/check verify navigation safety route, native origin guard, and accessible live UI`
+- [x] Test it: `/test navigation safety route, native origin guard, and accessible live UI`
+
+### 10. Continuous integration recovery and regression suite · done
+Restore a green main pipeline by expanding compile checks, backup manifest tallies, native destination probes, and automated backend and browser regression tests across desktop and mobile profiles.
+**Done when:** syntax compile checks include the voice manager and micro pod migration runner, backup manifests record pod and voice session counts alongside users and trips, the native destination probe verifies zero token leakage across all pod and voice helpers, isolated backend suites cover every new safety and block invariant without touching the local development database, and desktop plus mobile browser journeys pass end to end in continuous integration.
+- [x] Build it: `/develop continuous integration recovery and regression suite`
+- [x] Verify it: `/check verify continuous integration recovery and regression suite`
+- [x] Test it: `/test continuous integration recovery and regression suite`
+
+## Deferred
+Out of scope for the current build pass, kept so the plan stays honest.
+- **Dedicated relay host**: separate media relay infrastructure outside the single approved pilot host · needs a decision
+- **Background push notifications**: prompt for browser notification permissions when joining a pod · needs a decision
+- **Audio output device switcher**: speakerphone routing toggle across mobile browsers · Prototype
 
 ## Legend
 

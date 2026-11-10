@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, PlusCircle, MapPin, User as UserIcon, Sparkles, PhoneCall } from 'lucide-react';
+import { Users, Shield, PlusCircle, MapPin, User as UserIcon } from 'lucide-react';
 import type { Trip } from '../types';
 import type { Language } from '../locales';
 import { translations } from '../locales';
@@ -22,57 +22,39 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   lang,
 }) => {
   const t = translations[lang];
+  const isDiscoveryTab = activeTab === 'radar' || activeTab === 'pods' || activeTab === 'voice';
 
   return (
     <nav className="app-bottom-nav sticky bottom-0 z-30 bg-[#0f172a]/95 backdrop-blur-md border-t border-slate-800/80 px-2 py-2">
-      <div className="grid grid-cols-6 items-end gap-0.5 max-w-lg mx-auto">
-        {/* Micro-Pods Tab (Primary) */}
-        <button
-          onClick={() => onTabChange('pods')}
-          aria-current={activeTab === 'pods' ? 'page' : undefined}
-          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'pods'
-              ? 'text-indigo-400 font-bold scale-105'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Sparkles className="w-[18px] h-[18px]" />
-          <span className="max-w-full break-words text-center text-[10px] leading-tight">
-            {lang === 'pl' ? 'Pody 3-5' : 'Pods'}
-          </span>
-          {activeTab === 'pods' && <span className="w-1 h-1 rounded-full bg-indigo-400" />}
-        </button>
-
-        {/* 10-Minute Voice Calls Tab (Track 2) */}
-        <button
-          onClick={() => onTabChange('voice')}
-          aria-current={activeTab === 'voice' ? 'page' : undefined}
-          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'voice'
-              ? 'text-violet-400 font-bold scale-105'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <PhoneCall className="w-[18px] h-[18px]" />
-          <span className="max-w-full break-words text-center text-[10px] leading-tight">
-            {lang === 'pl' ? "Głos 10'" : 'Voice'}
-          </span>
-          {activeTab === 'voice' && <span className="w-1 h-1 rounded-full bg-violet-400" />}
-        </button>
-
-        {/* Nearby People & Radar Tab */}
+      <div className="grid grid-cols-5 items-end gap-1 max-w-lg mx-auto">
+        {/* Nearby / Radar Tab (Encompasses Outings, Micro-Pods, Voice) */}
         <button
           onClick={() => onTabChange('radar')}
-          aria-current={activeTab === 'radar' ? 'page' : undefined}
-          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'radar'
+          aria-current={isDiscoveryTab ? 'page' : undefined}
+          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-1 rounded-xl transition-all cursor-pointer ${
+            isDiscoveryTab
               ? 'text-emerald-400 font-bold scale-105'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Users className="w-[18px] h-[18px]" />
+          <Users className="w-5 h-5" />
           <span className="max-w-full break-words text-center text-[10px] leading-tight">{t.tabNearby || t.tabRadar}</span>
-          {activeTab === 'radar' && <span className="w-1 h-1 rounded-full bg-emerald-400" />}
+          {isDiscoveryTab && <span className="w-1 h-1 rounded-full bg-emerald-400" />}
+        </button>
+
+        {/* Dedicated Safety Hub Tab */}
+        <button
+          onClick={() => onTabChange('safety')}
+          aria-current={activeTab === 'safety' ? 'page' : undefined}
+          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-1 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'safety'
+              ? 'text-emerald-400 font-bold scale-105'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Shield className="w-5 h-5" />
+          <span className="max-w-full break-words text-center text-[10px] leading-tight">{t.tabSafety}</span>
+          {activeTab === 'safety' && <span className="w-1 h-1 rounded-full bg-emerald-400" />}
         </button>
 
         {/* Create Ping Tab (Center Highlight) */}
@@ -92,15 +74,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           onClick={() => onTabChange('active_trip')}
           aria-current={activeTab === 'active_trip' ? 'page' : undefined}
           aria-label={hasNewChatActivity ? `${t.tabTrip}, ${t.newChatMessage}` : t.tabTrip}
-          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 rounded-xl transition-all cursor-pointer ${
+          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-1 rounded-xl transition-all cursor-pointer ${
             activeTab === 'active_trip'
               ? 'text-emerald-400 font-bold scale-105'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <MapPin className="w-[18px] h-[18px]" />
-          <span aria-hidden="true" className="max-w-full whitespace-nowrap text-center text-[10px] leading-tight">
-            {lang === 'pl' ? 'Wyjście' : t.tabTrip}
+          <MapPin className="w-5 h-5" />
+          <span className="max-w-full break-words text-center text-[10px] leading-tight">
+            {t.tabTrip}
           </span>
           {activeTab === 'active_trip' && <span className="w-1 h-1 rounded-full bg-emerald-400" />}
           {activeTrip && (
@@ -112,13 +94,13 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         <button
           onClick={() => onTabChange('profile')}
           aria-current={activeTab === 'profile' ? 'page' : undefined}
-          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 rounded-xl transition-all cursor-pointer ${
+          className={`relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-1 rounded-xl transition-all cursor-pointer ${
             activeTab === 'profile'
               ? 'text-emerald-400 font-bold scale-105'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <UserIcon className="w-[18px] h-[18px]" />
+          <UserIcon className="w-5 h-5" />
           <span className="max-w-full break-words text-center text-[10px] leading-tight">{t.tabProfile}</span>
           {activeTab === 'profile' && <span className="w-1 h-1 rounded-full bg-emerald-400" />}
         </button>

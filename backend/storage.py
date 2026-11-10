@@ -1969,6 +1969,16 @@ class DurableStorage:
         conn = get_db_connection(self.db_path)
         try:
             cursor = conn.cursor()
+            # Opportunistic sweep of expired forming pods
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            cursor.execute(
+                """
+                UPDATE pods
+                SET status = 'cancelled', cancelled_at = ?, cancel_reason = 'quorum_not_reached', updated_at = ?
+                WHERE status = 'forming' AND quorum_deadline_at <= ?;
+                """,
+                (now_str, now_str, now_str),
+            )
             # Fetch blocked user IDs for viewer
             blocked_user_ids = set()
             if viewer_user_id:
@@ -2246,6 +2256,41 @@ class DurableStorage:
         finally:
             conn.close()
 
+    def separate_blocked_user_from_pods(self, blocker_id: str, blocked_id: str) -> List[int]:
+        """
+        Finds any active or forming pods where both blocker and blocked are confirmed members.
+        The blocker withdraws (status='left') so that the act of blocking cannot be weaponized
+        as an eviction attack against innocent existing members. Returns affected pod IDs.
+        """
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT p.id
+                FROM pods p
+                JOIN pod_members pm1 ON pm1.pod_id = p.id AND pm1.user_id = ? AND pm1.status = 'confirmed'
+                JOIN pod_members pm2 ON pm2.pod_id = p.id AND pm2.user_id = ? AND pm2.status = 'confirmed'
+                WHERE p.status IN ('forming', 'quorum');
+                """,
+                (blocker_id, blocked_id),
+            )
+            pod_ids = [row[0] for row in cursor.fetchall()]
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            for pid in pod_ids:
+                cursor.execute(
+                    """
+                    UPDATE pod_members
+                    SET status = 'left', status_changed_at = ?
+                    WHERE pod_id = ? AND user_id = ?;
+                    """,
+                    (now_str, pid, blocker_id),
+                )
+            conn.commit()
+            return pod_ids
+        finally:
+            conn.close()
+
     # --- 10-Minute Remote Voice Calls (Migration 12) ---
 
     def create_voice_session(
@@ -2363,7 +2408,7 @@ class DurableStorage:
                 """
                 SELECT COUNT(*) FROM voice_call_sessions
                 WHERE (user_a_id = ? OR user_b_id = ?)
-                  AND status IN ('active', 'completed')
+                  AND status IN ('active', 'completed', 'reported')
                   AND created_at >= ?;
                 """,
                 (user_id, user_id, since),
@@ -2381,7 +2426,7 @@ class DurableStorage:
                 """
                 SELECT ended_at, created_at FROM voice_call_sessions
                 WHERE (user_a_id = ? OR user_b_id = ?)
-                  AND status IN ('active', 'completed', 'dropped')
+                  AND status IN ('active', 'completed', 'dropped', 'reported')
                 ORDER BY created_at DESC LIMIT 1;
                 """,
                 (user_id, user_id),

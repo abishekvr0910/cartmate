@@ -49,9 +49,14 @@ def test_migration_11_on_real_cartmate_schema(tmp_path):
     """)
     
     # Create a micro-pod
+    from datetime import datetime, timezone, timedelta
+    now_dt = datetime.now(timezone.utc)
+    starts = (now_dt + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ends = (now_dt + timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    deadline = (now_dt + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     conn.execute(f"""
         INSERT INTO pods (template_code, third_place_id, created_by_user_id, language_code, starts_at, ends_at, quorum_deadline_at, min_participants, max_participants, spend_expectation)
-        VALUES ('study_sprint', {place_id}, 'usr_zuzanna', 'pl', '2026-11-09T14:00:00Z', '2026-11-09T15:00:00Z', '2026-11-09T13:00:00Z', 3, 5, 'no_expected_spend')
+        VALUES ('study_sprint', {place_id}, 'usr_zuzanna', 'pl', '{starts}', '{ends}', '{deadline}', 3, 5, 'no_expected_spend')
     """)
     pod_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     

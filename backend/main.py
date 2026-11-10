@@ -300,7 +300,10 @@ def is_scope_authorized_for_user(scope: str, user_id: str) -> bool:
             pod = storage.get_pod(pod_id)
             if not pod:
                 return False
-            return any(m["user_id"] == user_id for m in pod.get("members", []))
+            confirmed_uids = [m["user_id"] for m in pod.get("members", []) if m.get("status") == "confirmed"]
+            if user_id not in confirmed_uids:
+                return False
+            return not any(database.is_user_blocked(user_id, other_id) for other_id in confirmed_uids if other_id != user_id)
         except (ValueError, TypeError):
             return False
     return False
@@ -456,7 +459,8 @@ def require_moderator(
     current_user: UserPrivateSchema = Depends(require_user),
 ) -> UserPrivateSchema:
     """Require explicit server-side moderator allowlisting for safety operations."""
-    if current_user.id not in MODERATOR_USER_IDS:
+    env_mods = {m.strip() for m in os.getenv("CARTMATE_MODERATOR_USER_IDS", "").split(",") if m.strip()}
+    if current_user.id not in MODERATOR_USER_IDS and current_user.id not in env_mods:
         raise HTTPException(
             status_code=403,
             detail="Tylko upoważniony moderator może przeglądać kolejkę lub podejmować działania.",
@@ -522,7 +526,11 @@ def requires_live_age_admission(path: str, method: str) -> bool:
         return True
     if path.startswith("/api/outings/") and path.endswith("/leave"):
         return False
-    if path.startswith(("/api/pings", "/api/hotspots", "/api/outings", "/api/chat")):
+    if path.startswith("/api/pods/") and path.endswith("/leave"):
+        return False
+    if path.startswith("/api/voice/calls/") and path.endswith(("/hangup", "/rate")):
+        return False
+    if path.startswith(("/api/pings", "/api/hotspots", "/api/outings", "/api/chat", "/api/pods", "/api/voice")):
         return True
     if path.startswith("/api/trips/") and method in {"POST", "PUT", "DELETE"}:
         # A participant must always be able to leave, report, or call for help.
@@ -1382,6 +1390,10 @@ async def block_user_endpoint(
         raise HTTPException(status_code=404, detail="Użytkownik nie został znaleziony.")
 
     database.block_user(current_user.id, target_user_id)
+    storage.separate_blocked_user_from_pods(current_user.id, target_user_id)
+    active_call_id = voice_call_manager.user_to_call.get(current_user.id)
+    if active_call_id and voice_call_manager.get_peer_id(active_call_id, current_user.id) == target_user_id:
+        await voice_call_manager.terminate_call(active_call_id, initiator_user_id=current_user.id, reason="blocked", block_peer=True)
     # A live subscription was authorized before this block. Force both sides
     # to reconnect and recheck their current chat/trip/outing relationships.
     await ws_manager.close_user(current_user.id)
@@ -3364,11 +3376,19 @@ async def websocket_endpoint(
                     if room.scope == "outing":
                         await ws_manager.broadcast(f"outing:{room.target_id}", "chat.message", new_msg.model_dump())
             elif action == "pod_chat_message":
+                if is_production() and not is_adult_verified(user):
+                    await ws_manager.send_personal_message(
+                        websocket,
+                        {"type": "error", "message": "Wymagane zatwierdzone potwierdzenie pełnoletności (18+)."}
+                    )
+                    continue
                 pod_id_raw = msg.get("pod_id")
                 content = (msg.get("text") or "").strip()
                 if pod_id_raw and content:
                     try:
                         pod_id = int(pod_id_raw)
+                        rate_limiter.assert_allowed(f"pod-chat:{user.id}", 30, 60, "wysyłania wiadomości")
+                        await assert_public_content_safe(content)
                         sent_msg = storage.send_pod_message(pod_id, user.id, content)
                         await ws_manager.broadcast(
                             f"pod:{pod_id}",
@@ -3380,15 +3400,41 @@ async def websocket_endpoint(
                             websocket,
                             {"type": "error", "message": str(ve)}
                         )
-                    except Exception as exc:
+                    except HTTPException as he:
                         await ws_manager.send_personal_message(
                             websocket,
-                            {"type": "error", "message": f"Nie udało się wysłać wiadomości: {exc}"}
+                            {"type": "error", "message": he.detail}
+                        )
+                    except Exception as exc:
+                        logger.error(f"Error in pod_chat_message: {exc}")
+                        await ws_manager.send_personal_message(
+                            websocket,
+                            {"type": "error", "message": "Nie udało się wysłać wiadomości."}
                         )
             elif action == "voice.join_queue":
-                topic = (msg.get("topic") or "Spokojna rozmowa o dniu").strip()
+                if is_production() and not is_adult_verified(user):
+                    await ws_manager.send_personal_message(
+                        websocket,
+                        {"type": "error", "message": "Wymagane zatwierdzone potwierdzenie pełnoletności (18+)."}
+                    )
+                    continue
+                topic = (msg.get("topic") or "Spokojna rozmowa o dniu").strip()[:120]
+                try:
+                    rate_limiter.assert_allowed(f"voice-queue:{user.id}", 6, 60, "kolejki głosowej")
+                    await assert_public_content_safe(topic)
+                except HTTPException as he:
+                    await ws_manager.send_personal_message(
+                        websocket,
+                        {"type": "error", "message": he.detail}
+                    )
+                    continue
                 status_res, call_data = await voice_call_manager.enqueue_caller(user.id, topic, websocket)
-                if status_res == "ALREADY_IN_CALL":
+                if status_res == "WINDOW_CLOSED":
+                    await ws_manager.send_personal_message(
+                        websocket,
+                        {"type": "error", "message": "Rozmowy głosowe są dostępne codziennie w godzinach 18:00 - 23:00."}
+                    )
+                elif status_res == "ALREADY_IN_CALL":
                     await ws_manager.send_personal_message(
                         websocket,
                         {"type": "error", "message": "Jesteś już w trakcie aktywnego połączenia."}
@@ -3440,17 +3486,19 @@ async def websocket_endpoint(
                 block_peer = bool(msg.get("block_peer", False))
                 if call_id:
                     await voice_call_manager.terminate_call(call_id, initiator_user_id=user.id, reason=reason, block_peer=block_peer)
+                    if block_peer:
+                        await ws_manager.close_user(user.id)
     except WebSocketDisconnect:
         await voice_call_manager.dequeue_caller(user.id)
         active_call_id = voice_call_manager.user_to_call.get(user.id)
         if active_call_id:
-            await voice_call_manager.terminate_call(active_call_id, initiator_user_id=user.id, reason="peer_disconnected")
+            await voice_call_manager.terminate_call(active_call_id, initiator_user_id=user.id, reason="connection_failed")
         await ws_manager.disconnect(websocket)
     except Exception:
         await voice_call_manager.dequeue_caller(user.id)
         active_call_id = voice_call_manager.user_to_call.get(user.id)
         if active_call_id:
-            await voice_call_manager.terminate_call(active_call_id, initiator_user_id=user.id, reason="peer_disconnected")
+            await voice_call_manager.terminate_call(active_call_id, initiator_user_id=user.id, reason="connection_failed")
         await ws_manager.disconnect(websocket)
 
 
@@ -3515,7 +3563,7 @@ class PodCreateRequest(BaseModel):
     starts_at: str
     ends_at: str
     quorum_deadline_at: str
-    title: Optional[str] = None
+    title: Optional[str] = Field(default=None, max_length=120)
     language_code: str = "pl"
     exchange_language_code: Optional[str] = None
     template_params: Optional[str] = None
@@ -3527,14 +3575,14 @@ class PodCreateRequest(BaseModel):
     cohort_id: Optional[int] = None
 
 class PodMessageRequest(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=2000)
 
 class ThirdPlaceCreateRequest(BaseModel):
-    slug: str
-    name: str
-    kind: str
+    slug: str = Field(min_length=2, max_length=60)
+    name: str = Field(min_length=2, max_length=120)
+    kind: str = Field(min_length=2, max_length=60)
     city: str
-    meeting_point: str
+    meeting_point: str = Field(min_length=3, max_length=200)
     latitude: float
     longitude: float
     is_indoor: int = 1
@@ -3544,23 +3592,32 @@ class ThirdPlaceCreateRequest(BaseModel):
 
 
 @app.get("/api/pods/templates")
-def list_activity_templates():
+def list_activity_templates(
+    current_user: Optional[UserPrivateSchema] = Depends(optional_user),
+):
     """Returns all active structured activity templates (study sprint, park walk, etc)."""
+    assert_discovery_authenticated(current_user)
     return storage.get_activity_templates()
 
 
 @app.get("/api/pods/places")
-def list_third_places(city: Optional[str] = None):
+def list_third_places(
+    city: Optional[str] = None,
+    current_user: Optional[UserPrivateSchema] = Depends(optional_user),
+):
     """Returns verified public Third Places, optionally filtered by city."""
+    assert_discovery_authenticated(current_user)
     return storage.get_third_places(city=city)
 
 
 @app.post("/api/pods/places")
 def create_third_place_endpoint(
     req: ThirdPlaceCreateRequest,
-    current_user: UserPrivateSchema = Depends(require_user),
+    current_user: UserPrivateSchema = Depends(require_moderator),
 ):
-    """Adds a verified Third Place anchor with its exact meeting point."""
+    """Adds a verified Third Place anchor with its exact meeting point (moderator-only)."""
+    if not is_city_in_launch_boundary(req.city):
+        raise HTTPException(status_code=422, detail="Spot is outside the active pilot region.")
     try:
         place_id = storage.create_third_place(
             slug=req.slug,
@@ -3577,7 +3634,8 @@ def create_third_place_endpoint(
         )
         return {"id": place_id, "name": req.name, "slug": req.slug}
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Nie udało się utworzyć miejsca: {exc}")
+        logger.error(f"Error creating third place: {exc}")
+        raise HTTPException(status_code=400, detail="Nie udało się utworzyć miejsca.")
 
 
 @app.get("/api/pods/feed")
@@ -3590,16 +3648,20 @@ def get_pods_feed(
     Near Me Today Feed: Returns available micro-pods (forming or at quorum).
     Hides pods containing mutually blocked users.
     """
+    assert_discovery_authenticated(current_user)
     viewer_id = current_user.id if current_user else None
     return storage.list_pods(city=city, language_code=language_code, viewer_user_id=viewer_id)
 
 
 @app.post("/api/pods")
-def create_micro_pod(
+async def create_micro_pod(
     req: PodCreateRequest,
     current_user: UserPrivateSchema = Depends(require_user),
 ):
     """Creates a new scheduled micro-pod. The host is automatically added as first confirmed member."""
+    rate_limiter.assert_allowed(f"pod-create:{current_user.id}", 5, 3600, "tworzenia podów")
+    if req.title:
+        await assert_public_content_safe(req.title)
     try:
         pod_id = storage.create_pod(
             template_code=req.template_code,
@@ -3621,16 +3683,26 @@ def create_micro_pod(
         )
         pod = storage.get_pod(pod_id)
         return pod
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Nieprawidłowe dane lub ograniczenie integralności danych.")
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Nie udało się utworzyć poda: {exc}")
+        logger.error(f"Error creating pod: {exc}")
+        raise HTTPException(status_code=400, detail="Nie udało się utworzyć poda.")
 
 
 @app.get("/api/pods/{pod_id}")
-def get_pod_details(pod_id: int):
+def get_pod_details(
+    pod_id: int,
+    current_user: UserPrivateSchema = Depends(require_user),
+):
     """Returns details of a specific micro-pod, including venue and confirmed members."""
     pod = storage.get_pod(pod_id)
     if not pod:
         raise HTTPException(status_code=404, detail="Pod nie został znaleziony.")
+    if any(database.is_user_blocked(current_user.id, m["user_id"]) for m in pod.get("members", []) if m["user_id"] != current_user.id):
+        raise HTTPException(status_code=403, detail="Ten pod jest niedostępny ze względu na blokadę użytkownika.")
     return pod
 
 
@@ -3640,6 +3712,7 @@ async def join_pod_endpoint(
     current_user: UserPrivateSchema = Depends(require_user),
 ):
     """Joins a micro-pod. Enforces mutual blocks, seat limits, and updates quorum automatically."""
+    rate_limiter.assert_allowed(f"pod-join:{current_user.id}", 15, 60, "dołączania do podów")
     try:
         pod = storage.join_pod(pod_id, current_user.id)
         await ws_manager.broadcast(
@@ -3656,8 +3729,11 @@ async def join_pod_endpoint(
         return pod
     except ValueError as ve:
         raise HTTPException(status_code=409, detail=str(ve))
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail="Nie można dołączyć do poda.")
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        logger.error(f"Error joining pod: {exc}")
+        raise HTTPException(status_code=400, detail="Błąd dołączania do poda.")
 
 
 @app.post("/api/pods/{pod_id}/leave")
@@ -3682,7 +3758,8 @@ async def leave_pod_endpoint(
     except ValueError as ve:
         raise HTTPException(status_code=409, detail=str(ve))
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        logger.error(f"Error leaving pod: {exc}")
+        raise HTTPException(status_code=400, detail="Błąd opuszczania poda.")
 
 
 @app.get("/api/pods/{pod_id}/messages")
@@ -3704,6 +3781,8 @@ async def send_pod_message_endpoint(
     current_user: UserPrivateSchema = Depends(require_user),
 ):
     """Sends a chat message to the micro-pod. Enforced by database trigger to require quorum."""
+    rate_limiter.assert_allowed(f"pod-chat:{current_user.id}", 30, 60, "wysyłania wiadomości")
+    await assert_public_content_safe(req.text)
     try:
         msg = storage.send_pod_message(pod_id, current_user.id, req.text)
         await ws_manager.broadcast(
@@ -3716,15 +3795,15 @@ async def send_pod_message_endpoint(
         status_code = 403 if "quorum" in str(ve).lower() else 400
         raise HTTPException(status_code=status_code, detail=str(ve))
     except Exception as exc:
-        status_code = 403 if "quorum" in str(exc).lower() else 400
-        raise HTTPException(status_code=status_code, detail=str(exc))
+        logger.error(f"Error sending pod message: {exc}")
+        raise HTTPException(status_code=400, detail="Nie udało się wysłać wiadomości.")
 
 
 @app.post("/api/pods/sweep")
 def sweep_unconfirmed_pods(
-    current_user: UserPrivateSchema = Depends(require_user),
+    current_user: UserPrivateSchema = Depends(require_moderator),
 ):
-    """Cancels pods that failed to reach quorum before their deadline."""
+    """Cancels pods that failed to reach quorum before their deadline (moderator-only)."""
     cancelled = storage.cancel_unconfirmed_pods()
     return {"cancelled_count": cancelled}
 
@@ -3769,15 +3848,9 @@ def get_voice_status(
     is_in_queue = current_user.id in voice_call_manager.queue
     queue_topic = voice_call_manager.queue[current_user.id].topic if is_in_queue else None
 
-    # Scheduled window: 18:00 - 23:00 Polish Time (always open in dev/staging/testing)
-    window_open = True
-    if is_production():
-        try:
-            from zoneinfo import ZoneInfo
-            warsaw_hour = datetime.now(ZoneInfo("Europe/Warsaw")).hour
-            window_open = 18 <= warsaw_hour < 23
-        except Exception:
-            window_open = True
+    # Scheduled window: 18:00 - 23:00 Polish Time
+    from voice_manager import is_voice_window_open
+    window_open = is_voice_window_open()
 
     icebreakers = [
         "Jak minął Ci dzisiejszy dzień?",
@@ -3803,7 +3876,7 @@ def get_voice_status(
 
 
 @app.post("/api/voice/calls/{call_id}/rate")
-def rate_voice_call(
+async def rate_voice_call(
     call_id: str,
     request: VoiceRatingCreate,
     current_user: UserPrivateSchema = Depends(require_user),
@@ -3829,18 +3902,31 @@ def rate_voice_call(
         details=request.details,
     )
 
-    if request.block_peer or request.rating == "inappropriate":
+    if request.block_peer:
         try:
-            conn = get_db_connection(storage.db_path)
-            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            conn.execute(
-                "INSERT OR IGNORE INTO user_blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?);",
-                (current_user.id, target_id, now_str),
+            database.block_user(current_user.id, target_id)
+            storage.separate_blocked_user_from_pods(current_user.id, target_id)
+            await ws_manager.close_user(current_user.id)
+            await ws_manager.close_user(target_id)
+        except Exception as exc:
+            logger.error(f"Error persisting block during rate_voice_call: {exc}")
+
+    if request.rating == "inappropriate":
+        try:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            report = ReportSchema(
+                id=f"rep_v_{secrets.token_hex(6)}",
+                reporter_id=current_user.id,
+                reported_user_id=target_id,
+                category=request.report_tag or "harassment",
+                details=f"Zgłoszenie z rozmowy głosowej ({call_id}): {request.details or 'Brak opisu'}",
+                status="pending",
+                created_at=now_iso,
+                updated_at=now_iso,
             )
-            conn.commit()
-            conn.close()
-        except Exception:
-            pass
+            database.save_report(report)
+        except Exception as exc:
+            logger.error(f"Error creating report from voice call: {exc}")
 
     return {"success": True, "rating_id": rating_id, "call_id": call_id}
 
@@ -3861,12 +3947,17 @@ async def hangup_voice_call(
     if current_user.id not in (session["user_a_id"], session["user_b_id"]):
         raise HTTPException(status_code=403, detail="Brak uprawnień do zakończenia tego połączenia.")
 
+    target_id = session["user_b_id"] if current_user.id == session["user_a_id"] else session["user_a_id"]
     res = await voice_call_manager.terminate_call(
         call_id=call_id,
         initiator_user_id=current_user.id,
         reason=request.reason,
         block_peer=request.block_peer,
     )
+    if request.block_peer:
+        await ws_manager.close_user(current_user.id)
+        await ws_manager.close_user(target_id)
+
     return {"success": True, "result": res}
 
 

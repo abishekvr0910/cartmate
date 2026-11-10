@@ -11,6 +11,7 @@ def clean_db(tmp_path, monkeypatch):
     test_db = str(tmp_path / "test_api_pods.db")
     monkeypatch.setenv("CARTMATE_DATABASE_PATH", test_db)
     monkeypatch.setenv("CARTMATE_ENV", "development")
+    monkeypatch.setenv("CARTMATE_MODERATOR_USER_IDS", "usr_zuzanna")
     from storage import storage
     old_db_path = storage.db_path
     storage.db_path = test_db
@@ -85,16 +86,22 @@ def test_third_places_and_pod_lifecycle(clean_db):
     assert places[0]["name"] == "Park Śląski - Krąg Taneczny"
     assert "park_walk" in places[0]["allowed_templates"]
 
-    # 3. Create a Micro-Pod
+    # 3. Create a Micro-Pod in future
+    from datetime import datetime, timezone, timedelta
+    now_dt = datetime.now(timezone.utc)
+    starts = (now_dt + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ends = (now_dt + timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    deadline = (now_dt + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     res = client.post(
         "/api/pods",
         headers=headers_zuzanna,
         json={
             "template_code": "park_walk",
             "third_place_id": place_id,
-            "starts_at": "2026-11-09T17:00:00Z",
-            "ends_at": "2026-11-09T17:45:00Z",
-            "quorum_deadline_at": "2026-11-09T16:00:00Z",
+            "starts_at": starts,
+            "ends_at": ends,
+            "quorum_deadline_at": deadline,
             "language_code": "pl",
             "spend_expectation": "no_expected_spend",
             "title": "Popołudniowy spacer po Parku Śląskim"
@@ -203,15 +210,21 @@ def test_blocked_user_cannot_join_pod(clean_db):
     )
     place_id = res.json()["id"]
 
+    from datetime import datetime, timezone, timedelta
+    now_dt = datetime.now(timezone.utc)
+    starts = (now_dt + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ends = (now_dt + timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    deadline = (now_dt + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     res = client.post(
         "/api/pods",
         headers=headers_zuzanna,
         json={
             "template_code": "language_exchange",
             "third_place_id": place_id,
-            "starts_at": "2026-11-09T18:00:00Z",
-            "ends_at": "2026-11-09T19:00:00Z",
-            "quorum_deadline_at": "2026-11-09T17:00:00Z",
+            "starts_at": starts,
+            "ends_at": ends,
+            "quorum_deadline_at": deadline,
             "language_code": "pl",
             "exchange_language_code": "en",
             "spend_expectation": "no_expected_spend",
