@@ -2071,6 +2071,16 @@ class DurableStorage:
         conn = get_db_connection(self.db_path)
         try:
             cursor = conn.cursor()
+            # Opportunistic sweep of expired forming pods before join check
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            cursor.execute(
+                """
+                UPDATE pods
+                SET status = 'cancelled', cancelled_at = ?, cancel_reason = 'quorum_not_reached', updated_at = ?
+                WHERE status = 'forming' AND quorum_deadline_at <= ?;
+                """,
+                (now_str, now_str, now_str),
+            )
             # 1. Check if pod exists and is joinable
             cursor.execute("SELECT * FROM pods WHERE id = ?;", (pod_id,))
             pod = cursor.fetchone()
@@ -2174,6 +2184,22 @@ class DurableStorage:
             if not pod or pod["status"] not in ("quorum", "completed"):
                 raise ValueError("CHAT_LOCKED_UNTIL_QUORUM")
 
+            # Mutual block check against confirmed members
+            cursor.execute(
+                """
+                SELECT 1
+                FROM pod_members pm
+                JOIN user_blocks ub
+                  ON (ub.blocker_id = ? AND ub.blocked_id = pm.user_id)
+                  OR (ub.blocker_id = pm.user_id AND ub.blocked_id = ?)
+                WHERE pm.pod_id = ? AND pm.status = 'confirmed' AND pm.user_id != ?
+                LIMIT 1;
+                """,
+                (viewer_user_id, viewer_user_id, pod_id, viewer_user_id),
+            )
+            if cursor.fetchone():
+                raise ValueError("BLOCKED_MEMBER_IN_POD")
+
             cursor.execute(
                 """
                 SELECT pm.*, u.data_json AS sender_data_json
@@ -2205,6 +2231,21 @@ class DurableStorage:
         conn = get_db_connection(self.db_path)
         try:
             cursor = conn.cursor()
+            # Mutual block check against confirmed members
+            cursor.execute(
+                """
+                SELECT 1
+                FROM pod_members pm
+                JOIN user_blocks ub
+                  ON (ub.blocker_id = ? AND ub.blocked_id = pm.user_id)
+                  OR (ub.blocker_id = pm.user_id AND ub.blocked_id = ?)
+                WHERE pm.pod_id = ? AND pm.status = 'confirmed' AND pm.user_id != ?
+                LIMIT 1;
+                """,
+                (sender_user_id, sender_user_id, pod_id, sender_user_id),
+            )
+            if cursor.fetchone():
+                raise ValueError("BLOCKED_MEMBER_IN_POD")
             # Trigger in DB will abort if not at quorum or sender not a confirmed member
             now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             cursor.execute(

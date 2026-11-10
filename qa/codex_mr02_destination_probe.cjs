@@ -31,6 +31,16 @@ async function inspect({ native = true, stored = null, env = {} } = {}) {
   vm.runInNewContext(apiSource, sandbox);
   const api = sandbox.exports;
   await api.fetchCurrentUser();
+  await api.fetchPodTemplates();
+  await api.fetchThirdPlaces('Katowice');
+  await api.fetchPodFeed('Katowice', 'synthetic-destination-review-token');
+  await api.joinPod(1, 'synthetic-destination-review-token');
+  await api.leavePod(1, 'synthetic-destination-review-token');
+  await api.fetchPodMessages(1, 'synthetic-destination-review-token');
+  await api.sendPodMessage(1, 'Hello', 'synthetic-destination-review-token');
+  await api.fetchVoiceStatus('synthetic-destination-review-token');
+  await api.rateVoiceCall('call_1', { rating: 'respectful' }, 'synthetic-destination-review-token');
+  await api.hangupVoiceCall('call_1', 'synthetic-destination-review-token', false);
   sandbox.exports = {};
   sandbox.require = name => { if (name === '../api') return api; throw new Error(`Unexpected import: ${name}`); };
   vm.runInNewContext(socketSource, sandbox);

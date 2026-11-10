@@ -621,6 +621,11 @@ def launch_readiness_check():
         blockers.append("The closed pilot is approved only for the Silesia region.")
     if not AGE_ASSURANCE_TRUSTED_PROVIDERS:
         blockers.append("The approved 18+ age-assurance provider and verification flow are not configured.")
+    turn_secret_env = os.getenv("CARTMATE_TURN_SECRET", "")
+    if CARTMATE_ENV == "production" and (not turn_secret_env or turn_secret_env == "cartmate_ephemeral_turn_secret_dev"):
+        blockers.append("Configure a unique CARTMATE_TURN_SECRET for production WebRTC TURN relay.")
+    elif turn_secret_env == "cartmate_ephemeral_turn_secret_dev" and is_production():
+        blockers.append("Configure a unique CARTMATE_TURN_SECRET for production WebRTC TURN relay.")
     # Direct 112 calling remains available while contact notification is disabled.
 
     return JSONResponse(
@@ -1390,7 +1395,20 @@ async def block_user_endpoint(
         raise HTTPException(status_code=404, detail="Użytkownik nie został znaleziony.")
 
     database.block_user(current_user.id, target_user_id)
-    storage.separate_blocked_user_from_pods(current_user.id, target_user_id)
+    separated_pids = storage.separate_blocked_user_from_pods(current_user.id, target_user_id)
+    for pid in separated_pids:
+        updated_pod = storage.get_pod(pid)
+        if updated_pod:
+            await ws_manager.broadcast(
+                f"pod:{pid}",
+                "pod.member_left",
+                {
+                    "pod_id": pid,
+                    "user_id": current_user.id,
+                    "confirmed_count": updated_pod["confirmed_count"],
+                    "status": updated_pod["status"],
+                },
+            )
     active_call_id = voice_call_manager.user_to_call.get(current_user.id)
     if active_call_id and voice_call_manager.get_peer_id(active_call_id, current_user.id) == target_user_id:
         await voice_call_manager.terminate_call(active_call_id, initiator_user_id=current_user.id, reason="blocked", block_peer=True)
@@ -3263,6 +3281,7 @@ async def websocket_endpoint(
     city_scope = f"city:{user.city.lower()}"
     user_scope = f"user:{user.id}"
     await ws_manager.connect(websocket, user_id=user.id, session_token=token, initial_scopes=[city_scope, user_scope])
+    voice_call_manager.cancel_disconnect_grace(user.id)
 
     try:
         while True:
@@ -3489,17 +3508,15 @@ async def websocket_endpoint(
                     if block_peer:
                         await ws_manager.close_user(user.id)
     except WebSocketDisconnect:
-        await voice_call_manager.dequeue_caller(user.id)
-        active_call_id = voice_call_manager.user_to_call.get(user.id)
-        if active_call_id:
-            await voice_call_manager.terminate_call(active_call_id, initiator_user_id=user.id, reason="connection_failed")
         await ws_manager.disconnect(websocket)
+        await voice_call_manager.dequeue_caller(user.id)
+        if user.id in voice_call_manager.user_to_call:
+            await voice_call_manager.handle_socket_disconnect(user.id)
     except Exception:
-        await voice_call_manager.dequeue_caller(user.id)
-        active_call_id = voice_call_manager.user_to_call.get(user.id)
-        if active_call_id:
-            await voice_call_manager.terminate_call(active_call_id, initiator_user_id=user.id, reason="connection_failed")
         await ws_manager.disconnect(websocket)
+        await voice_call_manager.dequeue_caller(user.id)
+        if user.id in voice_call_manager.user_to_call:
+            await voice_call_manager.handle_socket_disconnect(user.id)
 
 
 # --- Phase 4: TypeSafe AI Jev Governance & Decision Endpoints ---
@@ -3905,7 +3922,20 @@ async def rate_voice_call(
     if request.block_peer:
         try:
             database.block_user(current_user.id, target_id)
-            storage.separate_blocked_user_from_pods(current_user.id, target_id)
+            separated_pids = storage.separate_blocked_user_from_pods(current_user.id, target_id)
+            for pid in separated_pids:
+                updated_pod = storage.get_pod(pid)
+                if updated_pod:
+                    await ws_manager.broadcast(
+                        f"pod:{pid}",
+                        "pod.member_left",
+                        {
+                            "pod_id": pid,
+                            "user_id": current_user.id,
+                            "confirmed_count": updated_pod["confirmed_count"],
+                            "status": updated_pod["status"],
+                        },
+                    )
             await ws_manager.close_user(current_user.id)
             await ws_manager.close_user(target_id)
         except Exception as exc:

@@ -13,18 +13,28 @@ import {
   Lock,
 } from 'lucide-react';
 import type { User, VoiceStatusResponse, VoiceCallPeer } from '../types';
+import type { Language } from '../locales';
 import { fetchVoiceStatus, rateVoiceCall, hangupVoiceCall } from '../api';
 import { realtime } from '../realtime/socket';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 
 interface VoiceCallHUDProps {
   token: string | null;
   currentUser: User | null;
-  lang?: string;
+  lang?: Language;
 }
 
 type CallState = 'idle' | 'searching' | 'connecting' | 'in_call' | 'ended';
 
+const VOICE_MILESTONES: Record<Language, { m5: string; m1: string; s30: string }> = {
+  pl: { m5: 'Pozostało 5 minut rozmowy.', m1: 'Pozostała 1 minuta rozmowy.', s30: 'Pozostało 30 sekund rozmowy.' },
+  en: { m5: '5 minutes remaining in call.', m1: '1 minute remaining in call.', s30: '30 seconds remaining in call.' },
+  uk: { m5: 'Залишилося 5 хвилин розмови.', m1: 'Залишилася 1 хвилина розмови.', s30: 'Залишилося 30 секунд розмови.' },
+  ru: { m5: 'Осталось 5 минут разговора.', m1: 'Осталась 1 минута разговора.', s30: 'Осталось 30 секунд разговора.' },
+};
+
 export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: _currentUser, lang = 'pl' }) => {
+  const milestones = VOICE_MILESTONES[lang] || VOICE_MILESTONES.pl;
   const [statusData, setStatusData] = useState<VoiceStatusResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -49,6 +59,9 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
   const [ratingBlockPeer, setRatingBlockPeer] = useState<boolean>(false);
   const [ratingSubmitted, setRatingSubmitted] = useState<boolean>(false);
 
+  useDialogFocus('voice-block-confirm-dialog', showBlockConfirm, () => setShowBlockConfirm(false));
+  useDialogFocus('voice-rating-dialog', showRating, () => setShowRating(false));
+
   // Refs
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -60,10 +73,26 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const pendingOfferRef = useRef<{ sdp: string; call_id?: string } | null>(null);
   const activeCallIdRef = useRef<string | null>(null);
+  const callStateRef = useRef<CallState>('idle');
 
   useEffect(() => {
     activeCallIdRef.current = activeCallId;
   }, [activeCallId]);
+
+  useEffect(() => {
+    callStateRef.current = callState;
+  }, [callState]);
+
+  const milestoneAnnouncement =
+    callState === 'in_call'
+      ? secondsRemaining === 300
+        ? milestones.m5
+        : secondsRemaining === 60
+        ? milestones.m1
+        : secondsRemaining === 30
+        ? milestones.s30
+        : ''
+      : '';
 
   // Load Status
   const loadStatus = useCallback(async () => {
@@ -234,7 +263,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
 
             realtime.send({ action: 'voice.call_connected', call_id: callId });
           } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-            if (callState === 'in_call' || callState === 'connecting') {
+            if (callStateRef.current === 'in_call' || callStateRef.current === 'connecting') {
               handleCallEnded('connection_dropped');
             }
           }
@@ -267,7 +296,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
         cleanupMedia();
       }
     },
-    [callState, cleanupMedia, handleCallEnded]
+    [cleanupMedia, handleCallEnded]
   );
 
   // WebSocket Event Listeners
@@ -275,6 +304,31 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
     const unsubMatched = realtime.on('voice.call_matched', async (payload: any, env: any) => {
       const data = env?.call_id ? env : payload;
       if (!data || !data.call_id) return;
+
+      const reducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+      if (!reducedMotion) {
+        try {
+          navigator.vibrate?.(120);
+          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+          if (AudioCtx) {
+            const ctx = new AudioCtx();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+            osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.11);
+            gain.gain.setValueAtTime(0.06, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.3);
+            setTimeout(() => ctx.close().catch(() => {}), 350);
+          }
+        } catch {
+          // Ignore audio chime failure if autoplay is restricted
+        }
+      }
 
       setActiveCallId(data.call_id);
       setCallRole(data.role);
@@ -384,20 +438,20 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
     realtime.send({ action: 'voice.leave_queue' });
   };
 
-  // Hangup Call
+  // Hangup Call (single authoritative call path with WS fallback; zero duplicate hangup requests)
   const handleHangup = async (blockPeer = false) => {
     setShowBlockConfirm(false);
     if (activeCallId && token) {
       try {
+        await hangupVoiceCall(activeCallId, token, blockPeer);
+      } catch (e) {
+        console.warn('Hangup REST error, falling back to WS:', e);
         realtime.send({
           action: 'voice.call_hangup',
           call_id: activeCallId,
           reason: blockPeer ? 'user_blocked' : 'user_hangup',
           block_peer: blockPeer,
         });
-        await hangupVoiceCall(activeCallId, token, blockPeer);
-      } catch (e) {
-        console.warn('Hangup REST error:', e);
       }
     }
     handleCallEnded(blockPeer ? 'user_blocked' : 'user_hangup');
@@ -540,6 +594,10 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
                 Limit 10:00
               </span>
             </div>
+            {/* Milestone-only screen-reader announcer (5:00, 1:00, 0:30) */}
+            <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+              {milestoneAnnouncement}
+            </div>
           </div>
 
           {/* Icebreaker Prompt Cards with quick shuffle */}
@@ -610,9 +668,16 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
           {/* Block Confirmation Dialog */}
           {showBlockConfirm && (
             <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 text-center">
+              <div
+                id="voice-block-confirm-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="voice-block-confirm-title"
+                tabIndex={-1}
+                className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 text-center"
+              >
                 <ShieldAlert className="w-10 h-10 text-rose-400 mx-auto mb-3" />
-                <h3 className="text-base font-bold text-white mb-2">Zakończyć i zablokować?</h3>
+                <h3 id="voice-block-confirm-title" className="text-base font-bold text-white mb-2">Zakończyć i zablokować?</h3>
                 <p className="text-xs text-slate-300 leading-relaxed mb-5">
                   Rozmowa zostanie natychmiast przerwana, a ten rozmówca nie będzie mógł połączyć się z Tobą ani pisać w żadnym kanale.
                 </p>
@@ -773,16 +838,23 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
       {/* --- Post-Call Rating Modal --- */}
       {showRating && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 text-center">
+          <div
+            id="voice-rating-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="voice-rating-title"
+            tabIndex={-1}
+            className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 text-center"
+          >
             {ratingSubmitted ? (
               <div className="py-8">
                 <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
-                <h3 className="text-base font-bold text-white">Dziękujemy za ocenę!</h3>
+                <h3 id="voice-rating-title" className="text-base font-bold text-white">Dziękujemy za ocenę!</h3>
                 <p className="text-xs text-slate-400 mt-1">Pomagasz utrzymać życzliwą społeczność.</p>
               </div>
             ) : (
               <>
-                <h3 className="text-base font-bold text-white mb-1">Jak przebiegła rozmowa?</h3>
+                <h3 id="voice-rating-title" className="text-base font-bold text-white mb-1">Jak przebiegła rozmowa?</h3>
                 <p className="text-xs text-slate-400 mb-4">Twoja opinia jest w 100% anonimowa.</p>
 
                 <div className="grid grid-cols-3 gap-2 mb-4">
@@ -863,3 +935,5 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
     </div>
   );
 };
+
+export default VoiceCallHUD;

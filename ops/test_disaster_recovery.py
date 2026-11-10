@@ -113,6 +113,9 @@ def test_disaster_recovery_drill():
 
         assert backup_file.exists()
         assert manifest_file.exists()
+        manifest_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+        assert "pods" in manifest_data["counts"]
+        assert "voice_call_sessions" in manifest_data["counts"]
 
         # 3. Simulate catastrophic disaster: truncate users and corrupt trips in live_db
         cursor.execute("DELETE FROM users;")

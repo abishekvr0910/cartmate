@@ -90,7 +90,18 @@ def create_online_backup(
             raise RuntimeError(f"Backup failed integrity check: {integrity_result}")
         user_count = cursor.execute("SELECT count(*) FROM users;").fetchone()[0]
         trip_count = cursor.execute("SELECT count(*) FROM trips;").fetchone()[0]
-        logger.info(f"Integrity check passed. Stats: {user_count} users, {trip_count} trips.")
+        try:
+            pod_count = cursor.execute("SELECT count(*) FROM pods;").fetchone()[0]
+        except sqlite3.OperationalError:
+            pod_count = 0
+        try:
+            voice_session_count = cursor.execute("SELECT count(*) FROM voice_call_sessions;").fetchone()[0]
+        except sqlite3.OperationalError:
+            voice_session_count = 0
+        logger.info(
+            f"Integrity check passed. Stats: {user_count} users, {trip_count} trips, "
+            f"{pod_count} pods, {voice_session_count} voice sessions."
+        )
     finally:
         verify_conn.close()
 
@@ -105,6 +116,8 @@ def create_online_backup(
         "counts": {
             "users": user_count,
             "trips": trip_count,
+            "pods": pod_count,
+            "voice_call_sessions": voice_session_count,
         },
     }
 

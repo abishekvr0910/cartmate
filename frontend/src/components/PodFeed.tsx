@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Pod, PodMessage } from '../types';
+import type { Language } from '../locales';
 import { fetchPodFeed, joinPod, leavePod, fetchPodMessages, sendPodMessage } from '../api';
 import { realtime } from '../realtime/socket';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import {
   Users,
   MapPin,
@@ -22,9 +24,18 @@ interface PodFeedProps {
   token: string | null;
   currentUserId?: string | null;
   onRequireAuth?: () => void;
+  lang?: Language;
 }
 
-export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequireAuth }) => {
+const POD_COPY: Record<Language, { joined: string; left: string; closeDrawer: string; sendLabel: string }> = {
+  pl: { joined: 'Dołączono do poda!', left: 'Opuszczono poda.', closeDrawer: 'Zamknij czat poda', sendLabel: 'Wyślij wiadomość' },
+  en: { joined: 'Joined the pod!', left: 'Left the pod.', closeDrawer: 'Close pod chat', sendLabel: 'Send message' },
+  uk: { joined: 'Ви приєдналися до групи!', left: 'Ви залишили групу.', closeDrawer: 'Закрити чат групи', sendLabel: 'Надіслати повідомлення' },
+  ru: { joined: 'Вы присоединились к группе!', left: 'Вы покинули группу.', closeDrawer: 'Закрыть чат группы', sendLabel: 'Отправить сообщение' },
+};
+
+export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequireAuth, lang = 'pl' }) => {
+  const copy = POD_COPY[lang] || POD_COPY.pl;
   const [pods, setPods] = useState<Pod[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +49,8 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
   const [messageText, setMessageText] = useState('');
   const [sendingMsg, setSendingMsg] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+
+  useDialogFocus('pod-chat-drawer-dialog', Boolean(activePodChat), () => setActivePodChat(null));
 
   const loadFeed = useCallback(async () => {
     try {
@@ -58,7 +71,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
     void loadFeed();
   }, [loadFeed]);
 
-  // Realtime subscription to active pod chat
+  // Realtime subscription to active pod chat & quorum shifts
   useEffect(() => {
     if (!activePodChat || !token) return;
     const channel = `pod:${activePodChat.id}`;
@@ -74,11 +87,37 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
       }
     });
 
+    const handleMemberShift = (payload: any, env: any) => {
+      const data = env?.pod_id ? env : payload;
+      if (data && data.pod_id === activePodChat.id) {
+        setActivePodChat((prev) =>
+          prev
+            ? {
+                ...prev,
+                confirmed_count: typeof data.confirmed_count === 'number' ? data.confirmed_count : prev.confirmed_count,
+                status: data.status || prev.status,
+              }
+            : null
+        );
+        if (data.status === 'forming') {
+          setChatError('Czat jest zablokowany do momentu osiągnięcia quorum (min. 3 osoby)');
+        } else if (data.status === 'quorum') {
+          setChatError(null);
+        }
+        void loadFeed();
+      }
+    };
+
+    const unsubJoined = realtime.on('pod.member_joined', handleMemberShift);
+    const unsubLeft = realtime.on('pod.member_left', handleMemberShift);
+
     return () => {
       unsubMsg();
+      unsubJoined();
+      unsubLeft();
       realtime.unsubscribe(channel);
     };
-  }, [activePodChat, token]);
+  }, [activePodChat, token, loadFeed]);
 
   const handleJoin = async (pod: Pod) => {
     if (!token) {
@@ -88,7 +127,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
     setActionFeedback(null);
     try {
       await joinPod(pod.id, token);
-      setActionFeedback({ type: 'success', message: 'Dołączono do poda!' });
+      setActionFeedback({ type: 'success', message: copy.joined });
       await loadFeed();
     } catch (err: any) {
       setActionFeedback({ type: 'error', message: err.message || 'Błąd dołączania do poda' });
@@ -103,7 +142,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
       if (activePodChat?.id === pod.id) {
         setActivePodChat(null);
       }
-      setActionFeedback({ type: 'success', message: 'Opuszczono poda.' });
+      setActionFeedback({ type: 'success', message: copy.left });
       await loadFeed();
     } catch (err: any) {
       setActionFeedback({ type: 'error', message: err.message || 'Błąd opuszczania poda' });
@@ -527,14 +566,21 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
       {/* --- Slide-in Group Chat Drawer Modal (Dark Glassmorphic) --- */}
       {activePodChat && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex justify-end">
-          <div className="w-full max-w-md bg-slate-950/95 border-l border-slate-800 h-full shadow-2xl flex flex-col justify-between">
+          <div
+            id="pod-chat-drawer-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pod-chat-drawer-title"
+            tabIndex={-1}
+            className="w-full max-w-md bg-slate-950/95 border-l border-slate-800 h-full shadow-2xl flex flex-col justify-between"
+          >
             {/* Chat Header */}
             <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/60 backdrop-blur-md">
               <div>
                 <div className="text-[11px] font-bold text-emerald-400 flex items-center gap-1 mb-0.5">
                   <CheckCircle2 className="w-3 h-3" /> Quorum aktywne ({activePodChat.confirmed_count} osób)
                 </div>
-                <h3 className="text-sm font-bold text-white truncate max-w-[260px]">
+                <h3 id="pod-chat-drawer-title" className="text-sm font-bold text-white truncate max-w-[260px]">
                   {activePodChat.title || activePodChat.template_name}
                 </h3>
                 <p className="text-[11px] text-slate-400">
@@ -542,7 +588,9 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setActivePodChat(null)}
+                aria-label={copy.closeDrawer}
                 className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -593,11 +641,13 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 placeholder="Napisz do grupy..."
+                aria-label="Treść wiadomości"
                 className="flex-1 px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
               />
               <button
                 type="submit"
                 disabled={sendingMsg || !messageText.trim()}
+                aria-label={copy.sendLabel}
                 className="p-3 bg-gradient-to-tr from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 disabled:opacity-40 text-white rounded-xl transition flex items-center justify-center cursor-pointer shadow-md shadow-indigo-500/20"
               >
                 <Send className="w-4 h-4" />
@@ -609,3 +659,5 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
     </div>
   );
 };
+
+export default PodFeed;

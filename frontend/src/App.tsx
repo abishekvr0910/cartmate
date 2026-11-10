@@ -33,12 +33,20 @@ import { SafetyHub } from './components/SafetyHub';
 import { AuthModal } from './components/AuthModal';
 import { PrivacyBanner } from './components/PrivacyBanner';
 import { PilotAgeConsole } from './components/PilotAgeConsole';
-import { PodFeed } from './components/PodFeed';
-import { VoiceCallHUD } from './components/VoiceCallHUD';
 import { Users, Sparkles, PhoneCall } from 'lucide-react';
 import type { ChatMessage, CommunityStats, LivePing, Trip, User } from './types';
 import type { Language } from './locales';
 import { translations } from './locales';
+
+const PodFeed = React.lazy(() => import('./components/PodFeed'));
+const VoiceCallHUD = React.lazy(() => import('./components/VoiceCallHUD'));
+
+const SWITCHER_COPY: Record<Language, { radar: string; pods: string; voice: string }> = {
+  pl: { radar: 'Wyjścia 1:1', pods: 'Pody 3-5', voice: "Głos 10'" },
+  en: { radar: '1:1 Outings', pods: 'Pods 3-5', voice: "Voice 10'" },
+  uk: { radar: 'Виходи 1:1', pods: 'Групи 3-5', voice: "Голос 10'" },
+  ru: { radar: 'Выходы 1:1', pods: 'Группы 3-5', voice: "Голос 10'" },
+};
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -677,7 +685,7 @@ export const App: React.FC = () => {
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
-                <span>{lang === 'pl' ? 'Wyjścia 1:1' : '1:1 Outings'}</span>
+                <span>{(SWITCHER_COPY[lang] || SWITCHER_COPY.pl).radar}</span>
               </button>
               <button
                 type="button"
@@ -690,7 +698,7 @@ export const App: React.FC = () => {
                 }`}
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>{lang === 'pl' ? 'Pody 3-5' : 'Pods 3-5'}</span>
+                <span>{(SWITCHER_COPY[lang] || SWITCHER_COPY.pl).pods}</span>
               </button>
               <button
                 type="button"
@@ -703,24 +711,29 @@ export const App: React.FC = () => {
                 }`}
               >
                 <PhoneCall className="w-3.5 h-3.5" />
-                <span>{lang === 'pl' ? "Głos 10'" : "Voice 10'"}</span>
+                <span>{(SWITCHER_COPY[lang] || SWITCHER_COPY.pl).voice}</span>
               </button>
             </div>
           )}
           {activeTab === 'pods' && (
-            <PodFeed
-              token={getStoredToken()}
-              currentUserId={currentUser?.id}
-              onRequireAuth={() => setIsAuthModalOpen(true)}
-            />
+            <React.Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">Ładowanie podów...</div>}>
+              <PodFeed
+                token={getStoredToken()}
+                currentUserId={currentUser?.id}
+                onRequireAuth={() => setIsAuthModalOpen(true)}
+                lang={lang}
+              />
+            </React.Suspense>
           )}
 
           {activeTab === 'voice' && (
-            <VoiceCallHUD
-              token={getStoredToken()}
-              currentUser={currentUser}
-              lang={lang}
-            />
+            <React.Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">Ładowanie rozmów głosowych...</div>}>
+              <VoiceCallHUD
+                token={getStoredToken()}
+                currentUser={currentUser}
+                lang={lang}
+              />
+            </React.Suspense>
           )}
 
           {activeTab === 'radar' && (

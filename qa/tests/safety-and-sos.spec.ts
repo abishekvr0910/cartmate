@@ -66,4 +66,24 @@ test.describe('Truthful Safety & SOS Disclosures Journey', () => {
     await dismissBtn.click();
     await expect(sosModal).not.toBeVisible();
   });
+
+  test('discovery segmented switcher navigates between 1:1 outings, micro-pods 3-5, and 10m voice while preserving Safety tab', async ({ page }) => {
+    await expect(page.locator('nav').first()).toBeVisible({ timeout: 10000 });
+    const safetyNavBtn = page.getByRole('navigation').getByRole('button', { name: /Bezpieczeństwo|Safety/i });
+    await expect(safetyNavBtn).toBeVisible();
+
+    const nearbyNavBtn = page.getByRole('navigation').getByRole('button', { name: /W pobliżu|Radar|Nearby/i }).first();
+    await nearbyNavBtn.click();
+
+    const podsBtn = page.getByRole('button', { name: /Pody 3-5|Pods 3-5/i });
+    await expect(podsBtn).toBeVisible({ timeout: 5000 });
+    await podsBtn.click();
+    await expect(page.locator('text=/Pody 3–5 osób|Pody 3-5/i').first()).toBeVisible({ timeout: 5000 });
+
+    const voiceBtn = page.getByRole('button', { name: /Głos 10'|Voice 10'/i });
+    await expect(voiceBtn).toBeVisible();
+    await voiceBtn.click();
+    await expect(page.locator('text=/Rozmowy Głosowe|Połącz z kimś teraz/i').first()).toBeVisible({ timeout: 5000 });
+    await expect(safetyNavBtn).toBeVisible();
+  });
 });

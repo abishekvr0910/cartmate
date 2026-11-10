@@ -290,3 +290,47 @@ def test_voice_terminate_reasons_and_reported_quota(clean_db):
 
     asyncio.run(_test())
 
+
+def test_voice_disconnect_grace_and_turn_secret_and_compile(clean_db, monkeypatch):
+    import os
+    import py_compile
+
+    backend_dir = os.path.dirname(__file__)
+    py_compile.compile(os.path.join(backend_dir, "voice_manager.py"), doraise=True)
+    py_compile.compile(os.path.join(backend_dir, "migrations", "m0011_micro_pods.py"), doraise=True)
+
+    # Production TURN secret fail-closed check
+    monkeypatch.setenv("CARTMATE_ENV", "production")
+    monkeypatch.setenv("CARTMATE_TURN_SECRET", "cartmate_ephemeral_turn_secret_dev")
+    ice_prod_default = voice_call_manager.get_ice_servers("usr_zuzanna")
+    assert all("turn:" not in str(s.get("urls")) for s in ice_prod_default)
+
+    monkeypatch.setenv("CARTMATE_TURN_SECRET", "strong-unique-production-turn-secret-999")
+    ice_prod_custom = voice_call_manager.get_ice_servers("usr_zuzanna")
+    assert any("turn:" in str(s.get("urls")) for s in ice_prod_custom)
+    monkeypatch.setenv("CARTMATE_ENV", "development")
+
+    async def _test_grace():
+        status_z, _ = await voice_call_manager.enqueue_caller("usr_zuzanna", "Książki", None)
+        status_m, call_m = await voice_call_manager.enqueue_caller("usr_marek", "Książki", None)
+        assert status_m == "MATCHED"
+        call_id = call_m["id"]
+
+        # Start a 0.25s disconnect grace timer and cancel it via reconnect
+        await voice_call_manager.handle_socket_disconnect("usr_zuzanna", grace_seconds=0.25)
+        assert "usr_zuzanna" in voice_call_manager.disconnect_grace_tasks
+        voice_call_manager.cancel_disconnect_grace("usr_zuzanna")
+        await asyncio.sleep(0.05)
+        assert call_id in voice_call_manager.active_calls
+
+        # Now let a short 0.05s disconnect grace timer expire without reconnect
+        await voice_call_manager.handle_socket_disconnect("usr_zuzanna", grace_seconds=0.05)
+        await asyncio.sleep(0.12)
+        assert call_id not in voice_call_manager.active_calls
+        session = storage.get_voice_session(call_id)
+        assert session["status"] == "dropped"
+        assert session["end_reason"] == "connection_failed"
+
+    asyncio.run(_test_grace())
+
+

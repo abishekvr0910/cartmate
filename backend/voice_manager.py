@@ -18,6 +18,8 @@ MAX_CALL_DURATION_SECONDS = 600       # 10 minutes hard cap
 QUEUE_TIMEOUT_SECONDS = 60           # 60 seconds matching timeout
 CALL_COOLDOWN_SECONDS = 600          # 10 minutes cooldown between calls
 DAILY_CALL_LIMIT = 3                 # 3 calls per 24 hours
+DEFAULT_DEV_TURN_SECRET = "cartmate_ephemeral_turn_secret_dev"
+DEFAULT_DISCONNECT_GRACE_SECONDS = 12.0
 
 
 def is_voice_window_open() -> bool:
@@ -49,25 +51,32 @@ class VoiceCallManager:
         self.active_calls: Dict[str, dict] = {}
         self.user_to_call: Dict[str, str] = {}
         self.call_timer_tasks: Dict[str, asyncio.Task] = {}
+        self.disconnect_grace_tasks: Dict[str, asyncio.Task] = {}
         self.lock = asyncio.Lock()
 
     def get_ice_servers(self, user_id: str) -> List[dict]:
         """
         Returns STUN and TURN relay configurations.
         Includes Google public STUN plus RFC 5766 TURN relay servers with ephemeral credentials.
+        Fails closed on TURN credentials in production if CARTMATE_TURN_SECRET uses the dev default.
         """
-        turn_secret = os.getenv("CARTMATE_TURN_SECRET", "cartmate_ephemeral_turn_secret_dev")
+        turn_secret = os.getenv("CARTMATE_TURN_SECRET", DEFAULT_DEV_TURN_SECRET)
         turn_host = os.getenv("CARTMATE_TURN_HOST", "turn.cartmate.pl")
-        
+        stun_servers = [
+            {"urls": "stun:stun.l.google.com:19302"},
+            {"urls": "stun:stun1.l.google.com:19302"},
+        ]
+        if os.getenv("CARTMATE_ENV") == "production" and (not turn_secret or turn_secret == DEFAULT_DEV_TURN_SECRET):
+            logger.warning("Production TURN secret is unconfigured or set to dev default; withholding TURN credentials.")
+            return stun_servers
+
         # Ephemeral timestamp-based credentials (valid for 15 minutes)
         expiry = int(time.time()) + 900
         username = f"{expiry}:{user_id}"
         digest = hmac.new(turn_secret.encode("utf-8"), username.encode("utf-8"), hashlib.sha1).digest()
         credential = base64.b64encode(digest).decode("utf-8")
 
-        return [
-            {"urls": "stun:stun.l.google.com:19302"},
-            {"urls": "stun:stun1.l.google.com:19302"},
+        return stun_servers + [
             {
                 "urls": [
                     f"turn:{turn_host}:3478?transport=udp",
@@ -78,6 +87,47 @@ class VoiceCallManager:
                 "credential": credential,
             },
         ]
+
+    def cancel_disconnect_grace(self, user_id: str) -> None:
+        """Cancels any pending cellular disconnect grace timer when a user reconnects."""
+        task = self.disconnect_grace_tasks.pop(user_id, None)
+        if task and not task.done():
+            task.cancel()
+
+    async def handle_socket_disconnect(self, user_id: str, grace_seconds: Optional[float] = None) -> None:
+        """
+        Gives brief cellular/Wi-Fi handoffs a 12-second reconnection grace window before
+        tearing down an active voice call. Never delays explicit hangups, blocks, or bans.
+        """
+        call_id = self.user_to_call.get(user_id)
+        if not call_id:
+            return
+        if grace_seconds is None:
+            try:
+                grace_seconds = float(os.getenv("CARTMATE_VOICE_DISCONNECT_GRACE_SECONDS", str(DEFAULT_DISCONNECT_GRACE_SECONDS)))
+            except ValueError:
+                grace_seconds = DEFAULT_DISCONNECT_GRACE_SECONDS
+
+        if grace_seconds <= 0:
+            await self.terminate_call(call_id, initiator_user_id=user_id, reason="connection_failed")
+            return
+
+        self.cancel_disconnect_grace(user_id)
+
+        async def _grace_wait():
+            try:
+                await asyncio.sleep(grace_seconds)
+                # If the user reconnected on another socket during the grace window, keep the call alive
+                if hasattr(self.ws, "_user_to_sockets") and self.ws._user_to_sockets.get(user_id):
+                    return
+                if self.user_to_call.get(user_id) == call_id:
+                    await self.terminate_call(call_id, initiator_user_id=user_id, reason="connection_failed")
+            except asyncio.CancelledError:
+                pass
+            finally:
+                self.disconnect_grace_tasks.pop(user_id, None)
+
+        self.disconnect_grace_tasks[user_id] = asyncio.create_task(_grace_wait())
 
     async def enqueue_caller(self, user_id: str, topic: str, websocket) -> Tuple[str, Optional[dict]]:
         """
@@ -337,10 +387,12 @@ class VoiceCallManager:
                 self.active_calls[call_id] = call
                 return {}
 
-            # Cancel countdown timer
+            # Cancel countdown timer and any pending disconnect grace timers
             timer_task = self.call_timer_tasks.pop(call_id, None)
             if timer_task and not timer_task.done():
                 timer_task.cancel()
+            self.cancel_disconnect_grace(user_a)
+            self.cancel_disconnect_grace(user_b)
 
             self.user_to_call.pop(user_a, None)
             self.user_to_call.pop(user_b, None)
@@ -383,7 +435,21 @@ class VoiceCallManager:
                 try:
                     import database
                     database.block_user(initiator_user_id, target_id)
-                    self.storage.separate_blocked_user_from_pods(initiator_user_id, target_id)
+                    separated_pids = self.storage.separate_blocked_user_from_pods(initiator_user_id, target_id)
+                    if hasattr(self.ws, "broadcast"):
+                        for pid in separated_pids:
+                            updated_pod = self.storage.get_pod(pid)
+                            if updated_pod:
+                                await self.ws.broadcast(
+                                    f"pod:{pid}",
+                                    "pod.member_left",
+                                    {
+                                        "pod_id": pid,
+                                        "user_id": initiator_user_id,
+                                        "confirmed_count": updated_pod["confirmed_count"],
+                                        "status": updated_pod["status"],
+                                    },
+                                )
                     logger.info(f"Voice call {call_id}: {initiator_user_id} blocked {target_id}")
                 except Exception as exc:
                     logger.error(f"Error persisting block during voice hangup: {exc}")
