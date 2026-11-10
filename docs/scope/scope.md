@@ -21,6 +21,9 @@ _These are recommendations to keep your build orderly, not requirements. Skip an
 | 8 | Voice signaling resilience, quotas, and abuse controls | Hardening | done |
 | 9 | Navigation safety route, native origin guard, and accessible live UI | Hardening | done |
 | 10 | Continuous integration recovery and regression suite | Hardening | done |
+| 11 | Strict voice table rebuild migration and production TURN startup guard | Audit Closure | planned |
+| 12 | Full four language localization across pod, voice, and safety views | Audit Closure | planned |
+| 13 | End to end pod and voice browser journeys and root pytest isolation | Audit Closure | planned |
 
 ## Foundations
 
@@ -132,6 +135,32 @@ Restore a green main pipeline by expanding compile checks, backup manifest talli
 - [x] Build it: `/develop continuous integration recovery and regression suite`
 - [x] Verify it: `/check verify continuous integration recovery and regression suite`
 - [x] Test it: `/test continuous integration recovery and regression suite`
+code in `backend/test_voice_calls.py`, `ops/cartmate_backup.py`, `ops/test_disaster_recovery.py`, `qa/codex_mr02_destination_probe.cjs`, `qa/tests/safety-and-sos.spec.ts`
+
+## Phase 4: Final Audit Closure
+
+### 11. Strict voice table rebuild migration and production TURN startup guard · planned · GA
+Add migration thirteen to rebuild existing non strict version twelve voice tables into strict SQLite tables without losing session or rating rows, and enforce a hard startup refusal when the production environment boots with a missing or default TURN secret.
+**Done when:** upgrading an existing version twelve database rebuilds `voice_call_sessions` and `voice_call_ratings` as `STRICT` tables while preserving all rows, indexes, and foreign keys, fresh databases continue to land at version thirteen with strict tables, and booting the FastAPI application or lifespan with `CARTMATE_ENV=production` and a missing or default `CARTMATE_TURN_SECRET` raises a `RuntimeError` immediately at startup in addition to the `/api/ready` readiness check.
+- [ ] Build it: `/develop strict voice table rebuild migration and production TURN startup guard`
+- [ ] Verify it: `/check verify strict voice table rebuild migration and production TURN startup guard`
+- [ ] Test it: `/test strict voice table rebuild migration and production TURN startup guard`
+- [ ] Review it: `/check review strict voice table rebuild migration and production TURN startup guard`
+- [ ] Document it: `/document`
+
+### 12. Full four language localization across pod, voice, and safety views · planned
+Eliminate all remaining hardcoded Polish strings in the micro pod feed and ten minute voice HUD, and expand the safety hub from two languages (`pl` and `en`) to all four supported locales (`pl`, `en`, `uk`, `ru`).
+**Done when:** switching the header language selector across Polish, English, Ukrainian, and Russian updates every visible label, badge, venue field, seat counter, chat drawer state, in call control, quota widget, privacy rule, icebreaker prompt, rating modal option, and safety hub card without leaving hardcoded Polish text or `pl` only ternary fallbacks in `PodFeed.tsx`, `VoiceCallHUD.tsx`, or `SafetyHub.tsx`.
+- [ ] Build it: `/develop full four language localization across pod, voice, and safety views`
+- [ ] Verify it: `/check verify full four language localization across pod, voice, and safety views`
+- [ ] Test it: `/test full four language localization across pod, voice, and safety views`
+
+### 13. End to end pod and voice browser journeys and root pytest isolation · planned
+Add real multi user Playwright browser journeys for micro pod quorum unlock, group chat delivery, and voice queue and rating flows, invoke the native destination probe inside the automated pytest suite so continuous integration always runs it, and fix the root level pytest environment ordering failure.
+**Done when:** Playwright exercises joining a pod to reach three of three quorum, opening the unlocked chat drawer, sending and receiving a live pod message, and entering and leaving the ten minute voice queue on desktop and mobile viewports, `codex_mr02_destination_probe.cjs` runs automatically inside the CI pytest pass, and running `pytest` from the repository root passes all backend and ops tests together with zero environment ordering failures.
+- [ ] Build it: `/develop end to end pod and voice browser journeys and root pytest isolation`
+- [ ] Verify it: `/check verify end to end pod and voice browser journeys and root pytest isolation`
+- [ ] Test it: `/test end to end pod and voice browser journeys and root pytest isolation`
 
 ## Deferred
 Out of scope for the current build pass, kept so the plan stays honest.
