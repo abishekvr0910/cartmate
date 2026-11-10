@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS voice_call_sessions (
     created_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
                               CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', created_at) IS created_at),
     CHECK (user_a_id <> user_b_id)
-);
+) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_voice_sessions_user_a ON voice_call_sessions (user_a_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_voice_sessions_user_b ON voice_call_sessions (user_b_id, created_at);
@@ -36,6 +36,6 @@ CREATE TABLE IF NOT EXISTS voice_call_ratings (
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
                          CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', created_at) IS created_at),
     UNIQUE (session_id, reporter_id)
-);
+) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_voice_ratings_target ON voice_call_ratings (target_id, rating);

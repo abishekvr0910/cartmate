@@ -375,13 +375,23 @@ class DurableStorage:
             for version, name, sql in MIGRATIONS:
                 if version not in applied_versions:
                     logger.info(f"Applying migration v{version}: {name}")
-                    conn.executescript(sql)
-                    now_str = datetime.now(timezone.utc).isoformat()
-                    conn.execute(
-                        "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?);",
-                        (version, name, now_str),
-                    )
-                    conn.commit()
+                    if version == 11:
+                        from migrations import m0011_micro_pods
+
+                        prev_isolation = conn.isolation_level
+                        conn.isolation_level = None
+                        try:
+                            m0011_micro_pods.upgrade(conn)
+                        finally:
+                            conn.isolation_level = prev_isolation
+                    else:
+                        conn.executescript(sql)
+                        now_str = datetime.now(timezone.utc).isoformat()
+                        conn.execute(
+                            "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?);",
+                            (version, name, now_str),
+                        )
+                        conn.commit()
         finally:
             conn.close()
 

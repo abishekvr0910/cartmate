@@ -334,3 +334,58 @@ def test_voice_disconnect_grace_and_turn_secret_and_compile(clean_db, monkeypatc
     asyncio.run(_test_grace())
 
 
+def test_voice_rating_validation_duplicate_409_and_strict_schema(clean_db):
+    """Verifies Pydantic 422 validation on report_tag/details, 409 on duplicate rating, and STRICT schema on 0012."""
+    token_z = "token_zuzanna"
+    call_id = "vc_test_strict_validation"
+    storage.create_voice_session(call_id, "usr_zuzanna", "usr_marek", "Test walidacji")
+
+    # 1. Invalid report_tag -> 422 Unprocessable Entity (not 500)
+    res_bad_tag = client.post(
+        f"/api/voice/calls/{call_id}/rate",
+        json={"rating": "inappropriate", "report_tag": "not_a_valid_tag"},
+        headers={"Authorization": f"Bearer {token_z}"},
+    )
+    assert res_bad_tag.status_code == 422
+
+    # 2. Details > 500 chars -> 422 Unprocessable Entity (not 500)
+    res_long = client.post(
+        f"/api/voice/calls/{call_id}/rate",
+        json={"rating": "neutral", "details": "x" * 501},
+        headers={"Authorization": f"Bearer {token_z}"},
+    )
+    assert res_long.status_code == 422
+
+    # 3. Valid rating -> 200 OK
+    res_ok = client.post(
+        f"/api/voice/calls/{call_id}/rate",
+        json={"rating": "respectful", "details": "Bardzo kulturalna rozmowa."},
+        headers={"Authorization": f"Bearer {token_z}"},
+    )
+    assert res_ok.status_code == 200
+
+    # 4. Duplicate rating -> idempotent 200 OK via INSERT OR REPLACE (never 500)
+    res_dup = client.post(
+        f"/api/voice/calls/{call_id}/rate",
+        json={"rating": "respectful"},
+        headers={"Authorization": f"Bearer {token_z}"},
+    )
+    assert res_dup.status_code == 200
+
+    # 5. Verify 0012 tables are STRICT in SQLite and m0011 upgrade set user_version
+    from storage import get_db_connection
+    conn = get_db_connection(storage.db_path)
+    try:
+        rows = conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN ('voice_call_sessions', 'voice_call_ratings')"
+        ).fetchall()
+        assert len(rows) == 2
+        for r in rows:
+            assert "STRICT" in r["sql"].upper()
+        user_ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        assert user_ver >= 11
+    finally:
+        conn.close()
+
+
+

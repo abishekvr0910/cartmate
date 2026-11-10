@@ -6,6 +6,7 @@ import re
 import secrets
 import sqlite3
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 from typing import Dict, List, Literal, Optional
@@ -115,10 +116,40 @@ apply_sanitized_logging()
 
 voice_call_manager = VoiceCallManager(ws_manager, storage)
 
+
+async def _periodic_pod_quorum_sweep() -> None:
+    while True:
+        try:
+            await asyncio.sleep(60)
+            storage.cancel_unconfirmed_pods()
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning(f"Background pod sweep error: {exc}")
+
+
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI):
+    try:
+        storage.cancel_unconfirmed_pods()
+    except Exception:
+        pass
+    sweep_task = asyncio.create_task(_periodic_pod_quorum_sweep())
+    try:
+        yield
+    finally:
+        sweep_task.cancel()
+        try:
+            await sweep_task
+        except asyncio.CancelledError:
+            pass
+
+
 app = FastAPI(
     title="CartMate API",
     description="Real-time activity-based companion platform API for grocery, shopping, and everyday errands in Poland.",
     version="1.0.0",
+    lifespan=_app_lifespan,
 )
 
 # 1. Restricted CORS Policy: production origins are strictly HTTPS; staging allows explicit HTTPS or explicit loopback test origins.
@@ -1399,16 +1430,15 @@ async def block_user_endpoint(
     for pid in separated_pids:
         updated_pod = storage.get_pod(pid)
         if updated_pod:
-            await ws_manager.broadcast(
-                f"pod:{pid}",
-                "pod.member_left",
-                {
-                    "pod_id": pid,
-                    "user_id": current_user.id,
-                    "confirmed_count": updated_pod["confirmed_count"],
-                    "status": updated_pod["status"],
-                },
-            )
+            payload_left = {
+                "pod_id": pid,
+                "user_id": current_user.id,
+                "confirmed_count": updated_pod["confirmed_count"],
+                "status": updated_pod["status"],
+            }
+            await ws_manager.broadcast(f"pod:{pid}", "pod.member_left", payload_left)
+            if updated_pod.get("place_city"):
+                await ws_manager.broadcast(f"city:{updated_pod['place_city'].lower()}", "pod.member_left", payload_left)
     active_call_id = voice_call_manager.user_to_call.get(current_user.id)
     if active_call_id and voice_call_manager.get_peer_id(active_call_id, current_user.id) == target_user_id:
         await voice_call_manager.terminate_call(active_call_id, initiator_user_id=current_user.id, reason="blocked", block_peer=True)
@@ -3504,9 +3534,16 @@ async def websocket_endpoint(
                 reason = msg.get("reason", "user_hangup")
                 block_peer = bool(msg.get("block_peer", False))
                 if call_id:
+                    peer_id = voice_call_manager.get_peer_id(call_id, user.id)
+                    if not peer_id:
+                        session = storage.get_voice_session(call_id)
+                        if session and user.id in (session["user_a_id"], session["user_b_id"]):
+                            peer_id = session["user_b_id"] if user.id == session["user_a_id"] else session["user_a_id"]
                     await voice_call_manager.terminate_call(call_id, initiator_user_id=user.id, reason=reason, block_peer=block_peer)
                     if block_peer:
                         await ws_manager.close_user(user.id)
+                        if peer_id:
+                            await ws_manager.close_user(peer_id)
     except WebSocketDisconnect:
         await ws_manager.disconnect(websocket)
         await voice_call_manager.dequeue_caller(user.id)
@@ -3732,17 +3769,16 @@ async def join_pod_endpoint(
     rate_limiter.assert_allowed(f"pod-join:{current_user.id}", 15, 60, "dołączania do podów")
     try:
         pod = storage.join_pod(pod_id, current_user.id)
-        await ws_manager.broadcast(
-            f"pod:{pod_id}",
-            "pod.member_joined",
-            {
-                "pod_id": pod_id,
-                "user_id": current_user.id,
-                "user_name": current_user.name,
-                "status": pod["status"],
-                "confirmed_count": pod["confirmed_count"],
-            },
-        )
+        joined_payload = {
+            "pod_id": pod_id,
+            "user_id": current_user.id,
+            "user_name": current_user.name,
+            "status": pod["status"],
+            "confirmed_count": pod["confirmed_count"],
+        }
+        await ws_manager.broadcast(f"pod:{pod_id}", "pod.member_joined", joined_payload)
+        if pod.get("place_city"):
+            await ws_manager.broadcast(f"city:{pod['place_city'].lower()}", "pod.member_joined", joined_payload)
         return pod
     except ValueError as ve:
         raise HTTPException(status_code=409, detail=str(ve))
@@ -3761,16 +3797,15 @@ async def leave_pod_endpoint(
     """Leaves a micro-pod. Drops confirmed count and demotes to 'forming' if below quorum."""
     try:
         pod = storage.leave_pod(pod_id, current_user.id)
-        await ws_manager.broadcast(
-            f"pod:{pod_id}",
-            "pod.member_left",
-            {
-                "pod_id": pod_id,
-                "user_id": current_user.id,
-                "status": pod["status"],
-                "confirmed_count": pod["confirmed_count"],
-            },
-        )
+        left_payload = {
+            "pod_id": pod_id,
+            "user_id": current_user.id,
+            "status": pod["status"],
+            "confirmed_count": pod["confirmed_count"],
+        }
+        await ws_manager.broadcast(f"pod:{pod_id}", "pod.member_left", left_payload)
+        if pod.get("place_city"):
+            await ws_manager.broadcast(f"city:{pod['place_city'].lower()}", "pod.member_left", left_payload)
         return pod
     except ValueError as ve:
         raise HTTPException(status_code=409, detail=str(ve))
@@ -3829,8 +3864,8 @@ def sweep_unconfirmed_pods(
 
 class VoiceRatingCreate(BaseModel):
     rating: Literal["respectful", "neutral", "inappropriate"]
-    report_tag: Optional[str] = None
-    details: Optional[str] = None
+    report_tag: Optional[Literal["sexual_misconduct", "hate_speech", "harassment", "commercial_spam", "other"]] = None
+    details: Optional[str] = Field(default=None, max_length=500)
     block_peer: bool = False
 
 
@@ -3901,6 +3936,10 @@ async def rate_voice_call(
     """
     Submits a post-call rating (respectful / neutral / inappropriate) and optionally blocks peer.
     """
+    rate_limiter.assert_allowed(f"voice-rate:{current_user.id}", 15, 60, "oceniania rozmów")
+    if request.details and request.details.strip():
+        await assert_public_content_safe(request.details)
+
     session = storage.get_voice_session(call_id)
     if not session:
         raise HTTPException(status_code=404, detail="Sesja połączenia nie została znaleziona.")
@@ -3910,14 +3949,19 @@ async def rate_voice_call(
 
     target_id = session["user_b_id"] if current_user.id == session["user_a_id"] else session["user_a_id"]
 
-    rating_id = storage.record_voice_rating(
-        session_id=call_id,
-        reporter_id=current_user.id,
-        target_id=target_id,
-        rating=request.rating,
-        report_tag=request.report_tag,
-        details=request.details,
-    )
+    try:
+        rating_id = storage.record_voice_rating(
+            session_id=call_id,
+            reporter_id=current_user.id,
+            target_id=target_id,
+            rating=request.rating,
+            report_tag=request.report_tag,
+            details=request.details,
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail="To połączenie zostało już ocenione lub dane oceny są nieprawidłowe.")
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
 
     if request.block_peer:
         try:
@@ -3926,16 +3970,15 @@ async def rate_voice_call(
             for pid in separated_pids:
                 updated_pod = storage.get_pod(pid)
                 if updated_pod:
-                    await ws_manager.broadcast(
-                        f"pod:{pid}",
-                        "pod.member_left",
-                        {
-                            "pod_id": pid,
-                            "user_id": current_user.id,
-                            "confirmed_count": updated_pod["confirmed_count"],
-                            "status": updated_pod["status"],
-                        },
-                    )
+                    left_payload = {
+                        "pod_id": pid,
+                        "user_id": current_user.id,
+                        "confirmed_count": updated_pod["confirmed_count"],
+                        "status": updated_pod["status"],
+                    }
+                    await ws_manager.broadcast(f"pod:{pid}", "pod.member_left", left_payload)
+                    if updated_pod.get("place_city"):
+                        await ws_manager.broadcast(f"city:{updated_pod['place_city'].lower()}", "pod.member_left", left_payload)
             await ws_manager.close_user(current_user.id)
             await ws_manager.close_user(target_id)
         except Exception as exc:

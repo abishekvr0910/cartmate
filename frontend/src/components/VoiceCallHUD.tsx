@@ -33,8 +33,74 @@ const VOICE_MILESTONES: Record<Language, { m5: string; m1: string; s30: string }
   ru: { m5: 'Осталось 5 минут разговора.', m1: 'Осталась 1 минута разговора.', s30: 'Осталось 30 секунд разговора.' },
 };
 
+const VOICE_COPY: Record<
+  Language,
+  {
+    title: string;
+    subtitle: string;
+    searchingTitle: string;
+    cancelSearch: string;
+    windowStatus: string;
+    windowOpen: string;
+    windowClosed: string;
+    connectNow: string;
+    rateTitle: string;
+    rateThanks: string;
+  }
+> = {
+  pl: {
+    title: '10-Minutowe Rozmowy',
+    subtitle: 'Anonimowe, bezpieczne połączenia audio',
+    searchingTitle: 'Szukamy rozmówcy...',
+    cancelSearch: 'Anuluj wyszukiwanie',
+    windowStatus: 'Status okna rozmów',
+    windowOpen: 'Otwarte (18:00 - 23:00)',
+    windowClosed: 'Zamknięte (18:00 - 23:00)',
+    connectNow: 'Połącz z kimś teraz (10 min)',
+    rateTitle: 'Jak przebiegła rozmowa?',
+    rateThanks: 'Dziękujemy za ocenę!',
+  },
+  en: {
+    title: '10-Minute Voice',
+    subtitle: 'Ephemeral anonymous audio calls',
+    searchingTitle: 'Searching for a caller...',
+    cancelSearch: 'Cancel search',
+    windowStatus: 'Call window status',
+    windowOpen: 'Open (18:00 - 23:00)',
+    windowClosed: 'Closed (18:00 - 23:00)',
+    connectNow: 'Connect now (10 min)',
+    rateTitle: 'How was the call?',
+    rateThanks: 'Thank you for rating!',
+  },
+  uk: {
+    title: '10-Хвилинні Розмови',
+    subtitle: 'Анонімні безпечні аудіодзвінки',
+    searchingTitle: 'Шукаємо співрозмовника...',
+    cancelSearch: 'Скасувати пошук',
+    windowStatus: 'Статус вікна розмов',
+    windowOpen: 'Відкрито (18:00 - 23:00)',
+    windowClosed: 'Закрито (18:00 - 23:00)',
+    connectNow: 'З’єднатися зараз (10 хв)',
+    rateTitle: 'Як пройшла розмова?',
+    rateThanks: 'Дякуємо за оцінку!',
+  },
+  ru: {
+    title: '10-Минутные Разговоры',
+    subtitle: 'Анонимные безопасные аудиозвонки',
+    searchingTitle: 'Ищем собеседника...',
+    cancelSearch: 'Отменить поиск',
+    windowStatus: 'Статус окна звонков',
+    windowOpen: 'Открыто (18:00 - 23:00)',
+    windowClosed: 'Закрыто (18:00 - 23:00)',
+    connectNow: 'Соединиться сейчас (10 мин)',
+    rateTitle: 'Как прошёл разговор?',
+    rateThanks: 'Спасибо за оценку!',
+  },
+};
+
 export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: _currentUser, lang = 'pl' }) => {
   const milestones = VOICE_MILESTONES[lang] || VOICE_MILESTONES.pl;
+  const vcopy = VOICE_COPY[lang] || VOICE_COPY.pl;
   const [statusData, setStatusData] = useState<VoiceStatusResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -505,10 +571,10 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
           </div>
           <div>
             <h1 className="text-base font-bold text-white leading-tight">
-              {lang === 'pl' ? '10-Minutowe Rozmowy' : '10-Minute Voice'}
+              {vcopy.title}
             </h1>
             <p className="text-xs text-slate-400">
-              {lang === 'pl' ? 'Anonimowe, bezpieczne połączenia audio' : 'Ephemeral anonymous audio calls'}
+              {vcopy.subtitle}
             </p>
           </div>
         </div>
@@ -711,7 +777,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
             </div>
           </div>
 
-          <h3 className="text-lg font-bold text-white mb-2">Szukamy rozmówcy...</h3>
+          <h3 className="text-lg font-bold text-white mb-2">{vcopy.searchingTitle}</h3>
           <p className="text-xs text-slate-400 max-w-xs mb-4">
             Dopasowujemy osobę z Twojego regionu na spokojną 10-minutową rozmowę.
           </p>
@@ -724,7 +790,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
             onClick={handleLeaveQueue}
             className="px-6 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer"
           >
-            Anuluj wyszukiwanie
+            {vcopy.cancelSearch}
           </button>
         </div>
       )}
@@ -735,16 +801,16 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
           {/* Schedule & Quota Widget */}
           <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-slate-400">Status okna rozmów</span>
+              <span className="text-xs font-semibold text-slate-400">{vcopy.windowStatus}</span>
               {statusData?.window_open ? (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Otwarte (18:00 - 23:00)
+                  {vcopy.windowOpen}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                  Zamknięte (18:00 - 23:00)
+                  {vcopy.windowClosed}
                 </span>
               )}
             </div>
@@ -828,7 +894,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
                   ? 'Okno rozmów zamknięte (18:00 - 23:00)'
                   : statusData?.daily_calls_used && statusData.daily_calls_used >= 3
                   ? 'Osiągnięto limit dzienny (3/3)'
-                  : 'Połącz z kimś teraz (10 min)'}
+                  : vcopy.connectNow}
               </span>
             </button>
           </div>
@@ -849,12 +915,12 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
             {ratingSubmitted ? (
               <div className="py-8">
                 <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
-                <h3 id="voice-rating-title" className="text-base font-bold text-white">Dziękujemy za ocenę!</h3>
+                <h3 id="voice-rating-title" className="text-base font-bold text-white">{vcopy.rateThanks}</h3>
                 <p className="text-xs text-slate-400 mt-1">Pomagasz utrzymać życzliwą społeczność.</p>
               </div>
             ) : (
               <>
-                <h3 id="voice-rating-title" className="text-base font-bold text-white mb-1">Jak przebiegła rozmowa?</h3>
+                <h3 id="voice-rating-title" className="text-base font-bold text-white mb-1">{vcopy.rateTitle}</h3>
                 <p className="text-xs text-slate-400 mb-4">Twoja opinia jest w 100% anonimowa.</p>
 
                 <div className="grid grid-cols-3 gap-2 mb-4">

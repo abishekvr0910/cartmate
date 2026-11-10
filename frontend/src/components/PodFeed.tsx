@@ -27,11 +27,166 @@ interface PodFeedProps {
   lang?: Language;
 }
 
-const POD_COPY: Record<Language, { joined: string; left: string; closeDrawer: string; sendLabel: string }> = {
-  pl: { joined: 'Dołączono do poda!', left: 'Opuszczono poda.', closeDrawer: 'Zamknij czat poda', sendLabel: 'Wyślij wiadomość' },
-  en: { joined: 'Joined the pod!', left: 'Left the pod.', closeDrawer: 'Close pod chat', sendLabel: 'Send message' },
-  uk: { joined: 'Ви приєдналися до групи!', left: 'Ви залишили групу.', closeDrawer: 'Закрити чат групи', sendLabel: 'Надіслати повідомлення' },
-  ru: { joined: 'Вы присоединились к группе!', left: 'Вы покинули группу.', closeDrawer: 'Закрыть чат группы', sendLabel: 'Отправить сообщение' },
+interface PodMemberShiftEvent {
+  pod_id?: number;
+  user_id?: string;
+  user_name?: string;
+  confirmed_count?: number;
+  status?: Pod['status'];
+}
+
+function unwrapPodShiftEvent(payload: unknown, env: unknown): PodMemberShiftEvent | null {
+  const candidate = (env && typeof env === 'object' && 'pod_id' in env ? env : payload) as PodMemberShiftEvent | null;
+  return candidate && typeof candidate === 'object' ? candidate : null;
+}
+
+const POD_COPY: Record<
+  Language,
+  {
+    joined: string;
+    left: string;
+    closeDrawer: string;
+    sendLabel: string;
+    heroBadge: string;
+    heroTitle: string;
+    heroDesc: string;
+    cityLabel: string;
+    allCities: string;
+    catAll: string;
+    catWalk: string;
+    catStudy: string;
+    catGames: string;
+    catLang: string;
+    loadingPods: string;
+    emptyTitle: string;
+    quorumActive: string;
+    forming: string;
+    leaveBtn: string;
+    chatBtn: string;
+    waitingQuorum: string;
+    joinBtn: string;
+    noSeatsBtn: string;
+    chatLockedErr: string;
+    noMessagesYet: string;
+    inputPlaceholder: string;
+  }
+> = {
+  pl: {
+    joined: 'Dołączono do poda!',
+    left: 'Opuszczono poda.',
+    closeDrawer: 'Zamknij czat poda',
+    sendLabel: 'Wyślij wiadomość',
+    heroBadge: 'NOWOŚĆ: BEZPIECZNE WYJŚCIA W MAŁYCH GRUPACH (3–5 OSÓB)',
+    heroTitle: 'Odkryj Micro-Pody na Śląsku',
+    heroDesc:
+      'Zero presji i niezręczności spotkań 1-na-1 z nieznajomymi. Umawiaj się na krótkie wyjścia w zweryfikowanych miejscach publicznych (parki, biblioteki, kawiarnie). Czat grupy odblokowuje się automatycznie po osiągnięciu quorum (min. 3 osoby).',
+    cityLabel: 'Miasto:',
+    allCities: 'Wszystkie',
+    catAll: 'Wszystkie aktywności',
+    catWalk: 'Spacer w parku',
+    catStudy: 'Sesja nauki',
+    catGames: 'Gry planszowe',
+    catLang: 'Wymiana językowa',
+    loadingPods: 'Ładowanie dostępnych podów...',
+    emptyTitle: 'Brak podów w wybranej kategorii',
+    quorumActive: 'Quorum aktywne!',
+    forming: 'Formowanie',
+    leaveBtn: 'Opuść',
+    chatBtn: 'Czat grupy',
+    waitingQuorum: 'Oczekiwanie na quorum...',
+    joinBtn: 'Dołącz do poda (+1 miejsce)',
+    noSeatsBtn: 'Brak wolnych miejsc',
+    chatLockedErr: 'Czat jest zablokowany do momentu osiągnięcia quorum (min. 3 osoby)',
+    noMessagesYet: 'Brak wcześniejszych wiadomości. Przywitaj się z grupą!',
+    inputPlaceholder: 'Napisz do grupy...',
+  },
+  en: {
+    joined: 'Joined the pod!',
+    left: 'Left the pod.',
+    closeDrawer: 'Close pod chat',
+    sendLabel: 'Send message',
+    heroBadge: 'NEW: SAFE SMALL-GROUP OUTINGS (3–5 PEOPLE)',
+    heroTitle: 'Discover Micro-Pods in Silesia',
+    heroDesc:
+      'No 1-on-1 pressure with strangers. Meet for structured activities at verified public third places (parks, libraries, cafés). Group chat unlocks automatically once quorum (min. 3 people) is reached.',
+    cityLabel: 'City:',
+    allCities: 'All',
+    catAll: 'All activities',
+    catWalk: 'Park walk',
+    catStudy: 'Study session',
+    catGames: 'Board games',
+    catLang: 'Language exchange',
+    loadingPods: 'Loading available pods...',
+    emptyTitle: 'No pods in this category',
+    quorumActive: 'Quorum active!',
+    forming: 'Forming',
+    leaveBtn: 'Leave',
+    chatBtn: 'Group chat',
+    waitingQuorum: 'Waiting for quorum...',
+    joinBtn: 'Join pod (+1 seat)',
+    noSeatsBtn: 'No seats left',
+    chatLockedErr: 'Chat is locked until quorum (min. 3 people) is reached',
+    noMessagesYet: 'No messages yet. Say hello to the group!',
+    inputPlaceholder: 'Message the group...',
+  },
+  uk: {
+    joined: 'Ви приєдналися до групи!',
+    left: 'Ви залишили групу.',
+    closeDrawer: 'Закрити чат групи',
+    sendLabel: 'Надіслати повідомлення',
+    heroBadge: 'НОВИНКА: БЕЗПЕЧНІ ЗУСТРІЧІ В МАЛИХ ГРУПАХ (3–5 ОСІБ)',
+    heroTitle: 'Відкрийте Мікро-Групи в Сілезії',
+    heroDesc:
+      'Без напруги зустрічей сам на сам із незнайомцями. Домовляйтеся про короткі виходи у перевірених публічних місцях. Груповий чат відкривається автоматично після досягнення кворуму (мін. 3 особи).',
+    cityLabel: 'Місто:',
+    allCities: 'Усі',
+    catAll: 'Усі активності',
+    catWalk: 'Прогулянка в парку',
+    catStudy: 'Спільне навчання',
+    catGames: 'Настільні ігри',
+    catLang: 'Мовний обмін',
+    loadingPods: 'Завантаження доступних груп...',
+    emptyTitle: 'Немає груп у вибраній категорії',
+    quorumActive: 'Кворум активний!',
+    forming: 'Формування',
+    leaveBtn: 'Вийти',
+    chatBtn: 'Чат групи',
+    waitingQuorum: 'Очікування кворуму...',
+    joinBtn: 'Приєднатися (+1 місце)',
+    noSeatsBtn: 'Немає вільних місць',
+    chatLockedErr: 'Чат заблоковано до досягнення кворуму (мін. 3 особи)',
+    noMessagesYet: 'Повідомлень ще немає. Привітайтеся з групою!',
+    inputPlaceholder: 'Напишіть групі...',
+  },
+  ru: {
+    joined: 'Вы присоединились к группе!',
+    left: 'Вы покинули группу.',
+    closeDrawer: 'Закрыть чат группы',
+    sendLabel: 'Отправить сообщение',
+    heroBadge: 'НОВИНКА: БЕЗОПАСНЫЕ ВСТРЕЧИ В МАЛЫХ ГРУППАХ (3–5 ЧЕЛ.)',
+    heroTitle: 'Откройте Микро-Группы в Силезии',
+    heroDesc:
+      'Без неловкости встреч 1-на-1 с незнакомцами. Встречайтесь в проверенных общественных местах (парки, библиотеки, кафе). Групповой чат открывается автоматически при достижении кворума (мин. 3 человека).',
+    cityLabel: 'Город:',
+    allCities: 'Все',
+    catAll: 'Все активности',
+    catWalk: 'Прогулка в парке',
+    catStudy: 'Совместная учёба',
+    catGames: 'Настольные игры',
+    catLang: 'Языковой обмен',
+    loadingPods: 'Загрузка доступных групп...',
+    emptyTitle: 'Нет групп в выбранной категории',
+    quorumActive: 'Кворум активен!',
+    forming: 'Формирование',
+    leaveBtn: 'Выйти',
+    chatBtn: 'Чат группы',
+    waitingQuorum: 'Ожидание кворума...',
+    joinBtn: 'Присоединиться (+1 место)',
+    noSeatsBtn: 'Нет свободных мест',
+    chatLockedErr: 'Чат заблокирован до достижения кворума (мин. 3 человека)',
+    noMessagesYet: 'Сообщений пока нет. Поприветствуйте группу!',
+    inputPlaceholder: 'Напишите группе...',
+  },
 };
 
 export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequireAuth, lang = 'pl' }) => {
@@ -71,7 +226,69 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
     void loadFeed();
   }, [loadFeed]);
 
-  // Realtime subscription to active pod chat & quorum shifts
+  // Feed-level realtime subscription: subscribe to joined pods and listen for quorum shifts even when drawer is closed
+  const joinedPodIdsKey = pods
+    .filter((p) => p.is_member || p.members.some((m) => m.user_id === currentUserId))
+    .map((p) => p.id)
+    .sort((a, b) => a - b)
+    .join(',');
+
+  useEffect(() => {
+    if (!token) return;
+    const channels = joinedPodIdsKey
+      ? joinedPodIdsKey.split(',').map((id) => `pod:${id}`)
+      : [];
+    channels.forEach((ch) => realtime.subscribe(ch));
+
+    const handleMemberShift = (payload: unknown, env: unknown) => {
+      const data = unwrapPodShiftEvent(payload, env);
+      if (!data || typeof data.pod_id !== 'number') return;
+
+      setPods((prev) =>
+        prev.map((p) => {
+          if (p.id !== data.pod_id) return p;
+          const nextCount = typeof data.confirmed_count === 'number' ? data.confirmed_count : p.confirmed_count;
+          const nextStatus = data.status || p.status;
+          return {
+            ...p,
+            confirmed_count: nextCount,
+            spots_left: Math.max(0, p.max_participants - nextCount),
+            status: nextStatus,
+          };
+        })
+      );
+
+      setActivePodChat((prev) => {
+        if (!prev || prev.id !== data.pod_id) return prev;
+        const nextCount = typeof data.confirmed_count === 'number' ? data.confirmed_count : prev.confirmed_count;
+        const nextStatus = data.status || prev.status;
+        if (nextStatus === 'forming') {
+          setChatError(copy.chatLockedErr);
+        } else if (nextStatus === 'quorum') {
+          setChatError(null);
+        }
+        return {
+          ...prev,
+          confirmed_count: nextCount,
+          spots_left: Math.max(0, prev.max_participants - nextCount),
+          status: nextStatus,
+        };
+      });
+
+      void loadFeed();
+    };
+
+    const unsubJoined = realtime.on('pod.member_joined', handleMemberShift);
+    const unsubLeft = realtime.on('pod.member_left', handleMemberShift);
+
+    return () => {
+      unsubJoined();
+      unsubLeft();
+      channels.forEach((ch) => realtime.unsubscribe(ch));
+    };
+  }, [token, joinedPodIdsKey, loadFeed, copy.chatLockedErr]);
+
+  // Realtime subscription to active pod chat messages when drawer is open
   useEffect(() => {
     if (!activePodChat || !token) return;
     const channel = `pod:${activePodChat.id}`;
@@ -87,37 +304,13 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
       }
     });
 
-    const handleMemberShift = (payload: any, env: any) => {
-      const data = env?.pod_id ? env : payload;
-      if (data && data.pod_id === activePodChat.id) {
-        setActivePodChat((prev) =>
-          prev
-            ? {
-                ...prev,
-                confirmed_count: typeof data.confirmed_count === 'number' ? data.confirmed_count : prev.confirmed_count,
-                status: data.status || prev.status,
-              }
-            : null
-        );
-        if (data.status === 'forming') {
-          setChatError('Czat jest zablokowany do momentu osiągnięcia quorum (min. 3 osoby)');
-        } else if (data.status === 'quorum') {
-          setChatError(null);
-        }
-        void loadFeed();
-      }
-    };
-
-    const unsubJoined = realtime.on('pod.member_joined', handleMemberShift);
-    const unsubLeft = realtime.on('pod.member_left', handleMemberShift);
-
     return () => {
       unsubMsg();
-      unsubJoined();
-      unsubLeft();
-      realtime.unsubscribe(channel);
+      if (!joinedPodIdsKey.split(',').includes(String(activePodChat.id))) {
+        realtime.unsubscribe(channel);
+      }
     };
-  }, [activePodChat, token, loadFeed]);
+  }, [activePodChat, token, joinedPodIdsKey]);
 
   const handleJoin = async (pod: Pod) => {
     if (!token) {
@@ -262,17 +455,15 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
         <div className="relative z-10">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-semibold mb-3">
             <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            <span>NOWOŚĆ: BEZPIECZNE WYJŚCIA W MAŁYCH GRUPACH (3–5 OSÓB)</span>
+            <span>{copy.heroBadge}</span>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white mb-2.5">
-            Odkryj Micro-Pody na Śląsku
+            {copy.heroTitle}
           </h1>
 
           <p className="text-slate-300 text-xs sm:text-sm max-w-2xl leading-relaxed mb-6">
-            Zero presji i niezręczności spotkań 1-na-1 z nieznajomymi. Umawiaj się na krótkie wyjścia
-            w zweryfikowanych miejscach publicznych (parki, biblioteki, kawiarnie). Czat grupy
-            odblokowuje się automatycznie po osiągnięciu quorum (min. 3 osoby).
+            {copy.heroDesc}
           </p>
 
           {/* Value props micro-pills */}
@@ -294,7 +485,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
           {/* City Filter Pills */}
           <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
             <span className="text-xs font-bold text-slate-400 mr-1 flex items-center gap-1">
-              <Compass className="w-3.5 h-3.5" /> Miasto:
+              <Compass className="w-3.5 h-3.5" /> {copy.cityLabel}
             </span>
             {['Wszystkie', 'Katowice', 'Chorzów', 'Gliwice'].map((city) => (
               <button
@@ -306,7 +497,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                     : 'bg-slate-900/80 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700'
                 }`}
               >
-                {city}
+                {city === 'Wszystkie' ? copy.allCities : city}
               </button>
             ))}
           </div>
@@ -316,11 +507,11 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
       {/* --- Activity Category Filter Chips --- */}
       <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 no-scrollbar">
         {[
-          { id: 'all', label: 'Wszystkie aktywności', icon: '✨' },
-          { id: 'park_walk', label: 'Spacer w parku', icon: '🌳' },
-          { id: 'study_sprint', label: 'Sesja nauki', icon: '📚' },
-          { id: 'board_games', label: 'Gry planszowe', icon: '🎲' },
-          { id: 'language_exchange', label: 'Wymiana językowa', icon: '🗣️' },
+          { id: 'all', label: copy.catAll, icon: '✨' },
+          { id: 'park_walk', label: copy.catWalk, icon: '🌳' },
+          { id: 'study_sprint', label: copy.catStudy, icon: '📚' },
+          { id: 'board_games', label: copy.catGames, icon: '🎲' },
+          { id: 'language_exchange', label: copy.catLang, icon: '🗣️' },
         ].map((cat) => (
           <button
             key={cat.id}
@@ -370,7 +561,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
       {loading && (
         <div className="flex flex-col justify-center items-center py-16 gap-3">
           <div className="animate-spin rounded-full h-8 w-8 border-2 border-indigo-500 border-t-transparent"></div>
-          <span className="text-xs text-slate-400 font-medium">Ładowanie dostępnych podów...</span>
+          <span className="text-xs text-slate-400 font-medium">{copy.loadingPods}</span>
         </div>
       )}
 
@@ -387,7 +578,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
           <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto mb-4">
             <Users className="w-8 h-8 text-indigo-400" />
           </div>
-          <h3 className="text-base font-bold text-white mb-1.5">Brak podów w wybranej kategorii</h3>
+          <h3 className="text-base font-bold text-white mb-1.5">{copy.emptyTitle}</h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">
             Wkrótce pojawią się nowe zaplanowane wyjścia w sprawdzonych lokalizacjach w Twojej okolicy.
           </p>
@@ -418,12 +609,12 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                   {isAtQuorum ? (
                     <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      Quorum aktywne!
+                      {copy.quorumActive}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0">
                       <Clock className="w-3 h-3 text-amber-400" />
-                      Formowanie
+                      {copy.forming}
                     </span>
                   )}
                 </div>
@@ -530,7 +721,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                       onClick={() => handleLeave(pod)}
                       className="py-2.5 px-3.5 border border-slate-700 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
                     >
-                      Opuść
+                      {copy.leaveBtn}
                     </button>
                     {isAtQuorum ? (
                       <button
@@ -538,12 +729,12 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                         className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-emerald-500/20 cursor-pointer"
                       >
                         <MessageSquare className="w-4 h-4" />
-                        <span>Czat grupy</span>
+                        <span>{copy.chatBtn}</span>
                         <ChevronRight className="w-3.5 h-3.5 opacity-70" />
                       </button>
                     ) : (
                       <div className="flex-1 py-2 px-3 text-center text-xs text-amber-300/80 bg-amber-500/10 border border-amber-500/20 rounded-xl font-medium">
-                        Oczekiwanie na quorum...
+                        {copy.waitingQuorum}
                       </div>
                     )}
                   </>
@@ -554,7 +745,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
                     className="w-full py-3 px-4 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 cursor-pointer"
                   >
                     <Users className="w-4 h-4" />
-                    <span>{pod.spots_left > 0 ? 'Dołącz do poda (+1 miejsce)' : 'Brak wolnych miejsc'}</span>
+                    <span>{pod.spots_left > 0 ? copy.joinBtn : copy.noSeatsBtn}</span>
                   </button>
                 )}
               </div>

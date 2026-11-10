@@ -29,15 +29,17 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
   const isDemoBuild = import.meta.env.DEV;
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifySuccess, setVerifySuccess] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
 
   const handleSimulateVerification = async () => {
     setIsVerifying(true);
+    setVerifyError(null);
     try {
       await onVerifyId();
       setVerifySuccess(true);
       setTimeout(() => setVerifySuccess(false), 3000);
     } catch (e: any) {
-      alert(e.message || 'Verification failed');
+      setVerifyError(e?.message || (lang === 'pl' ? 'Weryfikacja nie powiodła się.' : 'Verification failed.'));
     } finally {
       setIsVerifying(false);
     }
@@ -145,6 +147,11 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
                   {lang === 'pl' ? 'Tylko status demonstracyjny — tożsamość nie została zweryfikowana.' : 'Demo status only — identity was not verified.'}
                 </p>
               )}
+              {verifyError && (
+                <p role="alert" className="text-xs text-rose-300 font-semibold mt-2">
+                  {verifyError}
+                </p>
+              )}
             </div>
           </div>
 
@@ -223,6 +230,13 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
             {lang === 'pl' ? 'Niepotwierdzony' : 'Unverified'}
           </span>
         </div>
+        <a
+          href="tel:112"
+          className="w-full py-2.5 px-4 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-200 font-bold text-xs flex items-center justify-center gap-2 transition"
+        >
+          <PhoneCall className="w-4 h-4 text-rose-400" />
+          <span>{lang === 'pl' ? 'Zadzwoń pod 112 (Numer alarmowy)' : 'Call 112 (Emergency services)'}</span>
+        </a>
       </div>
 
       {/* Humane Tech Manifesto */}
@@ -240,3 +254,5 @@ export const SafetyHub: React.FC<SafetyHubProps> = ({
     </div>
   );
 };
+
+export default SafetyHub;

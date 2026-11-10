@@ -440,16 +440,15 @@ class VoiceCallManager:
                         for pid in separated_pids:
                             updated_pod = self.storage.get_pod(pid)
                             if updated_pod:
-                                await self.ws.broadcast(
-                                    f"pod:{pid}",
-                                    "pod.member_left",
-                                    {
-                                        "pod_id": pid,
-                                        "user_id": initiator_user_id,
-                                        "confirmed_count": updated_pod["confirmed_count"],
-                                        "status": updated_pod["status"],
-                                    },
-                                )
+                                left_payload = {
+                                    "pod_id": pid,
+                                    "user_id": initiator_user_id,
+                                    "confirmed_count": updated_pod["confirmed_count"],
+                                    "status": updated_pod["status"],
+                                }
+                                await self.ws.broadcast(f"pod:{pid}", "pod.member_left", left_payload)
+                                if updated_pod.get("place_city"):
+                                    await self.ws.broadcast(f"city:{updated_pod['place_city'].lower()}", "pod.member_left", left_payload)
                     logger.info(f"Voice call {call_id}: {initiator_user_id} blocked {target_id}")
                 except Exception as exc:
                     logger.error(f"Error persisting block during voice hangup: {exc}")
