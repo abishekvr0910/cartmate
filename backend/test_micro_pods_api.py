@@ -82,9 +82,10 @@ def test_third_places_and_pod_lifecycle(clean_db):
     res = client.get("/api/pods/places?city=Chorzów")
     assert res.status_code == 200
     places = res.json()
-    assert len(places) == 1
-    assert places[0]["name"] == "Park Śląski - Krąg Taneczny"
-    assert "park_walk" in places[0]["allowed_templates"]
+    assert len(places) >= 1
+    created_place = next((p for p in places if p["name"] == "Park Śląski - Krąg Taneczny"), None)
+    assert created_place is not None
+    assert "park_walk" in created_place["allowed_templates"]
 
     # 3. Create a Micro-Pod in future
     from datetime import datetime, timezone, timedelta
@@ -243,3 +244,43 @@ def test_blocked_user_cannot_join_pod(clean_db):
     res = client.post(f"/api/pods/{pod_id}/join", headers=headers_marek)
     assert res.status_code == 409
     assert "BLOCKED_MEMBER_IN_POD" in res.json()["detail"]
+
+
+def test_fresh_db_has_seeded_verified_third_places(tmp_path):
+    """Verifies that a fresh database initialized by DurableStorage has 6-10 verified Third Places across Katowice, Gliwice, and Chorzów."""
+    test_db = str(tmp_path / "fresh_places.db")
+    fresh_storage = DurableStorage(test_db)
+    places = fresh_storage.get_third_places()
+
+    # Assert 6 to 10 verified places exist
+    assert 6 <= len(places) <= 10
+
+    # Assert all three pilot cities are covered
+    cities = {p["city"] for p in places}
+    assert "Katowice" in cities
+    assert "Gliwice" in cities
+    assert "Chorzów" in cities
+
+    # Assert all seeded places are active, verified, have valid coordinates and meeting points
+    for p in places:
+        assert p["is_active"] == 1
+        assert p["verified_at"] is not None
+        assert len(p["meeting_point"]) >= 10
+        assert -90 <= p["latitude"] <= 90
+        assert -180 <= p["longitude"] <= 180
+        assert len(p["allowed_templates"]) > 0
+
+    # Assert idempotent re-execution (running ops seed again does not duplicate rows)
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from ops.seed_third_places import seed_verified_third_places
+    conn = get_db_connection(test_db)
+    try:
+        count_after = seed_verified_third_places(conn)
+        assert count_after == len(places)
+    finally:
+        conn.close()
+

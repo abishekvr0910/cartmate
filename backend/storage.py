@@ -329,6 +329,11 @@ MIGRATIONS: List[Tuple[int, str, str]] = [
         "voice_calls_strict_rebuild",
         open(os.path.join(os.path.dirname(__file__), "migrations", "0013_voice_calls_strict_rebuild.sql"), "r", encoding="utf-8").read(),
     ),
+    (
+        14,
+        "seed_pilot_third_places",
+        open(os.path.join(os.path.dirname(__file__), "migrations", "0014_seed_pilot_third_places.sql"), "r", encoding="utf-8").read(),
+    ),
 ]
 
 
