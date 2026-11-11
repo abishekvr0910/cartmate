@@ -194,8 +194,8 @@ class VoiceCallManager:
 
                 # Persist in database
                 self.storage.create_voice_session(call_id, user_id, matched_candidate_id, topic)
-                self.storage.record_analytics_event("voice_call_connected", user_id, {"call_id": call_id, "role": "offerer"})
-                self.storage.record_analytics_event("voice_call_connected", matched_candidate_id, {"call_id": call_id, "role": "answerer"})
+                self.storage.record_analytics_event_safe("voice_call_connected", user_id, {"call_id": call_id, "role": "offerer"})
+                self.storage.record_analytics_event_safe("voice_call_connected", matched_candidate_id, {"call_id": call_id, "role": "answerer"})
 
                 self.active_calls[call_id] = call_data
                 self.user_to_call[user_id] = call_id
@@ -249,7 +249,7 @@ class VoiceCallManager:
                 # Launch timeout watcher
                 entry.timeout_task = asyncio.create_task(self._queue_timeout_watcher(user_id, QUEUE_TIMEOUT_SECONDS))
                 self.queue[user_id] = entry
-                self.storage.record_analytics_event("voice_queue_entered", user_id, {"topic": topic})
+                self.storage.record_analytics_event_safe("voice_queue_entered", user_id, {"topic": topic})
                 return "QUEUED", None
 
     async def _queue_timeout_watcher(self, user_id: str, timeout_sec: int):

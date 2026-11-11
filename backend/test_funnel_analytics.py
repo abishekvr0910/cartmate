@@ -1,8 +1,9 @@
 """Unit and integration tests for the Pilot Funnel Analytics Telemetry (Migration 0015)."""
+import json
 import os
 import sqlite3
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 import main
@@ -62,9 +63,10 @@ def test_record_analytics_event_and_funnel_metrics(clean_storage):
 
     # 5. Record attendance (arrival)
     clean_storage.record_analytics_event("pod_attended", "usr_zuzanna", {"pod_id": 1})
+    clean_storage.record_analytics_event("pod_attended", "usr_jakub", {"pod_id": 1})
 
-    # 6. Record repeat pod join for Zuzanna
-    clean_storage.record_analytics_event("pod_joined", "usr_zuzanna", {"pod_id": 2, "is_host": True})
+    # 6. Record a second attended pod for Zuzanna (repeat attendance)
+    clean_storage.record_analytics_event("pod_attended", "usr_zuzanna", {"pod_id": 2})
 
     # 7. Record voice loop events
     clean_storage.record_analytics_event("voice_lobby_viewed", "usr_ania")
@@ -80,7 +82,7 @@ def test_record_analytics_event_and_funnel_metrics(clean_storage):
     assert pod_f["first_pod_view"] == 2
     assert pod_f["pod_join"] == 2
     assert pod_f["quorum_reached"] == 2
-    assert pod_f["attend"] == 1
+    assert pod_f["attend"] == 2
     assert pod_f["repeat"] == 1
     assert pod_f["join_conversion_rate"] == 1.0
     assert pod_f["quorum_conversion_rate"] == 1.0
@@ -215,10 +217,136 @@ def test_automatic_server_side_pod_funnel_emission(client, clean_storage):
     assert "pod_joined" in event_names
     assert "pod_quorum_reached" in event_names
     assert "pod_attended" in event_names
+    assert event_names.count("pod_quorum_reached") == 3
 
     # Check funnel metrics
     funnel = clean_storage.get_funnel_metrics()["pod_funnel"]
     assert funnel["pod_join"] >= 3
-    assert funnel["quorum_reached"] >= 1
+    assert funnel["quorum_reached"] >= 3
     assert funnel["attend"] >= 1
+
+
+def test_client_telemetry_rejects_funnel_events_and_sanitizes_properties(client, clean_storage):
+    headers = {"Authorization": "Bearer token_zuzanna"}
+
+    spoofed = client.post(
+        "/api/analytics/events",
+        headers=headers,
+        json={"event": "pod_joined", "properties": {"pod_id": 1}},
+    )
+    assert spoofed.status_code == 400
+
+    recorded = client.post(
+        "/api/analytics/events",
+        headers=headers,
+        json={
+            "event": "pod_feed_viewed",
+            "properties": {
+                "city": "Katowice",
+                "phone": "+48500600700",
+                "message": "private chat body",
+                "nested": {"unsafe": True},
+                "long": "x" * 500,
+            },
+        },
+    )
+    assert recorded.status_code == 200
+
+    conn = sqlite3.connect(clean_storage.db_path)
+    row = conn.execute(
+        "SELECT properties_json FROM analytics_events WHERE event_name = 'pod_feed_viewed' ORDER BY id DESC LIMIT 1;"
+    ).fetchone()
+    conn.close()
+    properties = json.loads(row[0])
+    assert properties["city"] == "Katowice"
+    assert "phone" not in properties
+    assert "message" not in properties
+    assert "nested" not in properties
+    assert len(properties["long"]) == 128
+
+
+def test_arrival_requires_confirmed_member_and_quorum(client, clean_storage):
+    headers_zuzanna = {"Authorization": "Bearer token_zuzanna"}
+    headers_jakub = {"Authorization": "Bearer token_jakub"}
+    headers_ania = {"Authorization": "Bearer token_ania"}
+
+    conn = sqlite3.connect(clean_storage.db_path)
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for user_id, email, phone in (
+        ("usr_zuzanna", "z@ex.pl", "+481"),
+        ("usr_jakub", "j@ex.pl", "+482"),
+        ("usr_ania", "a@ex.pl", "+483"),
+    ):
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, email, phone, data_json, created_at, updated_at) VALUES (?, ?, ?, '{}', ?, ?);",
+            (user_id, email, phone, now_str, now_str),
+        )
+    conn.commit()
+    conn.close()
+
+    place_id = clean_storage.create_third_place(
+        slug="katowice-arrival-test",
+        name="Park Arrival Test",
+        kind="park",
+        city="Katowice",
+        meeting_point="Wejscie glowne",
+        latitude=50.25,
+        longitude=19.01,
+        is_indoor=0,
+        template_codes=["park_walk"],
+    )
+    now_dt = datetime.now(timezone.utc)
+    create_res = client.post(
+        "/api/pods",
+        headers=headers_zuzanna,
+        json={
+            "template_code": "park_walk",
+            "third_place_id": place_id,
+            "starts_at": (now_dt + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "ends_at": (now_dt + timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "quorum_deadline_at": (now_dt + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "language_code": "pl",
+            "spend_expectation": "no_expected_spend",
+            "title": "Spacer arrival test",
+        },
+    )
+    assert create_res.status_code == 200
+    pod_id = create_res.json()["id"]
+
+    not_member = client.post(f"/api/pods/{pod_id}/arrived", headers=headers_jakub)
+    assert not_member.status_code == 403
+
+    assert client.post(f"/api/pods/{pod_id}/join", headers=headers_jakub).status_code == 200
+    forming = client.post(f"/api/pods/{pod_id}/arrived", headers=headers_jakub)
+    assert forming.status_code == 409
+
+    assert client.post(f"/api/pods/{pod_id}/join", headers=headers_ania).status_code == 200
+    arrived = client.post(f"/api/pods/{pod_id}/arrived", headers=headers_jakub)
+    assert arrived.status_code == 200
+    assert arrived.json()["already_marked"] is False
+
+    duplicate = client.post(f"/api/pods/{pod_id}/arrived", headers=headers_jakub)
+    assert duplicate.status_code == 200
+    assert duplicate.json()["already_marked"] is True
+
+
+def test_signup_event_emitted_on_first_otp_verify(client, clean_storage):
+    identifier = f"+48500{int(datetime.now(timezone.utc).timestamp() * 1000) % 1000000:06d}"
+    requested = client.post("/api/auth/otp/request", json={"identifier": identifier})
+    assert requested.status_code == 200
+
+    verified = client.post(
+        "/api/auth/otp/verify",
+        json={"identifier": identifier, "code": "1234"},
+    )
+    assert verified.status_code == 200
+    user_id = verified.json()["user"]["id"]
+
+    conn = sqlite3.connect(clean_storage.db_path)
+    row = conn.execute(
+        "SELECT COUNT(*) FROM analytics_events WHERE event_name = 'signup' AND user_id = ?;",
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    assert row[0] == 1
 

@@ -859,6 +859,7 @@ async def verify_otp(payload: OtpVerifySchema):
             city="Katowice",
             bio="Nowy użytkownik CartMate ze Śląska.",
         )
+        storage.record_analytics_event_safe("signup", user.id, {"city": "Katowice"})
 
     if "@" not in payload.identifier:
         record_phone_verification(user)
@@ -973,6 +974,7 @@ async def register(request: AuthRegisterRequest):
         )
     except ValueError:
         raise HTTPException(status_code=403, detail="Kod zaproszenia wygasł, został użyty lub unieważniony.")
+    storage.record_analytics_event_safe("signup", user.id, {"city": request.city or "Katowice"})
     if verification.get("valid") and not PILOT_INVITES_ENABLED:
         record_phone_verification(user)
     token = f"cmt_{secrets.token_hex(20)}"
@@ -3737,8 +3739,8 @@ async def create_micro_pod(
             spend_currency=req.spend_currency,
         )
         pod = storage.get_pod(pod_id)
-        storage.record_analytics_event("pod_created", current_user.id, {"pod_id": pod_id, "template_code": req.template_code})
-        storage.record_analytics_event("pod_joined", current_user.id, {"pod_id": pod_id, "is_host": True})
+        storage.record_analytics_event_safe("pod_created", current_user.id, {"pod_id": pod_id, "template_code": req.template_code})
+        storage.record_analytics_event_safe("pod_joined", current_user.id, {"pod_id": pod_id, "is_host": True})
         return pod
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
@@ -3770,6 +3772,11 @@ async def join_pod_endpoint(
 ):
     """Joins a micro-pod. Enforces mutual blocks, seat limits, and updates quorum automatically."""
     rate_limiter.assert_allowed(f"pod-join:{current_user.id}", 15, 60, "dołączania do podów")
+    pod_before = storage.get_pod(pod_id)
+    if not pod_before:
+        raise HTTPException(status_code=404, detail="Pod nie został znaleziony.")
+    if any(member["user_id"] == current_user.id for member in pod_before.get("members", [])):
+        return pod_before
     try:
         pod = storage.join_pod(pod_id, current_user.id)
         joined_payload = {
@@ -3782,9 +3789,17 @@ async def join_pod_endpoint(
         await ws_manager.broadcast(f"pod:{pod_id}", "pod.member_joined", joined_payload)
         if pod.get("place_city"):
             await ws_manager.broadcast(f"city:{pod['place_city'].lower()}", "pod.member_joined", joined_payload)
-        storage.record_analytics_event("pod_joined", current_user.id, {"pod_id": pod_id, "is_host": False})
-        if pod.get("status") in ("quorum", "completed"):
-            storage.record_analytics_event("pod_quorum_reached", current_user.id, {"pod_id": pod_id, "confirmed_count": pod.get("confirmed_count")})
+        storage.record_analytics_event_safe("pod_joined", current_user.id, {"pod_id": pod_id, "is_host": False})
+        if (
+            pod.get("status") in ("quorum", "completed")
+            and pod.get("confirmed_count") == int(pod.get("min_participants") or 3)
+        ):
+            for member in pod.get("members", []):
+                storage.record_analytics_event_safe(
+                    "pod_quorum_reached",
+                    member["user_id"],
+                    {"pod_id": pod_id, "confirmed_count": pod.get("confirmed_count")},
+                )
         return pod
     except ValueError as ve:
         raise HTTPException(status_code=409, detail=str(ve))
@@ -3872,9 +3887,22 @@ def mark_pod_arrived(
     current_user: UserPrivateSchema = Depends(require_user),
 ):
     """Marks the authenticated user arrived at the verified third place meeting point."""
-    storage.mark_pod_member_arrived(pod_id, current_user.id)
-    storage.record_analytics_event("pod_attended", current_user.id, {"pod_id": pod_id})
-    return {"status": "arrived", "pod_id": pod_id, "user_id": current_user.id}
+    pod = storage.get_pod(pod_id)
+    if not pod:
+        raise HTTPException(status_code=404, detail="Pod nie został znaleziony.")
+    if not any(member["user_id"] == current_user.id for member in pod.get("members", [])):
+        raise HTTPException(status_code=403, detail="Tylko potwierdzeni członkowie mogą potwierdzić przybycie.")
+    if pod.get("status") not in ("quorum", "completed"):
+        raise HTTPException(status_code=409, detail="Przybycie można potwierdzić dopiero po osiągnięciu quorum.")
+    newly_marked = storage.mark_pod_member_arrived(pod_id, current_user.id)
+    if newly_marked:
+        storage.record_analytics_event_safe("pod_attended", current_user.id, {"pod_id": pod_id})
+    return {
+        "status": "arrived",
+        "pod_id": pod_id,
+        "user_id": current_user.id,
+        "already_marked": not newly_marked,
+    }
 
 
 # --- Track 2: 10-Minute Remote Voice Calls Endpoints ---
@@ -4058,6 +4086,14 @@ async def hangup_voice_call(
 
 # --- Track 3: Pilot Funnel Telemetry & Conversion Analytics ---
 
+CLIENT_TELEMETRY_EVENTS = frozenset({
+    "landing_viewed",
+    "pod_feed_viewed",
+    "pod_chat_opened",
+    "voice_lobby_viewed",
+})
+
+
 class AnalyticsEventCreate(BaseModel):
     event: str = Field(min_length=2, max_length=64)
     properties: Optional[Dict[str, Any]] = None
@@ -4066,16 +4102,22 @@ class AnalyticsEventCreate(BaseModel):
 @app.post("/api/analytics/events")
 async def record_client_analytics_event(
     payload: AnalyticsEventCreate,
+    request: Request,
     current_user: Optional[UserPrivateSchema] = Depends(optional_user),
 ):
     """
     Client-side telemetry collector for the 100-person Silesia pilot conversion funnel.
-    Privacy-preserving: stores pseudonymous user ID, event name, sanitized properties, and UTC timestamp.
+    Only view-level client events are accepted; funnel events are emitted server-side so
+    a client cannot spoof joins, attendance, quorum, or call outcomes.
     """
     user_id = current_user.id if current_user else None
+    client_host = request.client.host if request.client else "unknown"
+    rate_limiter.assert_allowed(f"analytics-ip:{client_host}", 120, 60, "wysyłania zdarzeń telemetrycznych")
     if user_id:
         rate_limiter.assert_allowed(f"analytics:{user_id}", 60, 60, "wysyłania zdarzeń telemetrycznych")
     clean_event = re.sub(r"[^a-z0-9_]", "_", payload.event.lower().strip())[:64]
+    if clean_event not in CLIENT_TELEMETRY_EVENTS:
+        raise HTTPException(status_code=400, detail="Nieobsługiwane zdarzenie telemetryczne.")
     event_id = storage.record_analytics_event(
         event_name=clean_event,
         user_id=user_id,

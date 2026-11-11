@@ -15,6 +15,60 @@ logger = logging.getLogger("cartmate.storage")
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), "cartmate.db")
 DATABASE_PATH = os.getenv("CARTMATE_DATABASE_PATH", DEFAULT_DB_PATH)
 
+ANALYTICS_SENSITIVE_KEYS = frozenset({
+    "phone",
+    "email",
+    "mail",
+    "name",
+    "message",
+    "text",
+    "body",
+    "address",
+    "contact",
+    "latitude",
+    "longitude",
+    "lat",
+    "lng",
+    "coords",
+    "coordinates",
+    "token",
+    "secret",
+    "otp",
+    "password",
+    "invite_code",
+})
+ANALYTICS_MAX_PROPERTIES = 20
+ANALYTICS_MAX_STRING_LENGTH = 128
+ANALYTICS_MAX_JSON_BYTES = 2048
+
+
+def sanitize_analytics_properties(properties: Optional[dict]) -> dict:
+    """Drops PII-shaped keys and bounds the stored event payload."""
+    if not isinstance(properties, dict):
+        return {}
+    clean: Dict[str, Any] = {}
+    for key, value in list(properties.items())[:ANALYTICS_MAX_PROPERTIES]:
+        if not isinstance(key, str) or not key or len(key) > 64:
+            continue
+        if key.strip().lower() in ANALYTICS_SENSITIVE_KEYS:
+            continue
+        if isinstance(value, str):
+            clean[key] = value[:ANALYTICS_MAX_STRING_LENGTH]
+        elif isinstance(value, bool) or isinstance(value, (int, float)) or value is None:
+            clean[key] = value
+        else:
+            continue
+    encoded = json.dumps(clean, ensure_ascii=False)
+    if len(encoded.encode("utf-8")) > ANALYTICS_MAX_JSON_BYTES:
+        clean = {
+            key: (value[:32] if isinstance(value, str) else value)
+            for key, value in clean.items()
+        }
+        encoded = json.dumps(clean, ensure_ascii=False)
+        if len(encoded.encode("utf-8")) > ANALYTICS_MAX_JSON_BYTES:
+            return {}
+    return clean
+
 
 def get_db_connection(db_path: str = DATABASE_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=10.0, check_same_thread=False)
@@ -2202,19 +2256,21 @@ class DurableStorage:
         finally:
             conn.close()
 
-    def mark_pod_member_arrived(self, pod_id: int, user_id: str) -> None:
+    def mark_pod_member_arrived(self, pod_id: int, user_id: str) -> bool:
         conn = get_db_connection(self.db_path)
         try:
             now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            conn.execute(
+            cursor = conn.execute(
                 """
                 UPDATE pod_members
                 SET arrived_at = ?
-                WHERE pod_id = ? AND user_id = ? AND status = 'confirmed';
+                WHERE pod_id = ? AND user_id = ? AND status = 'confirmed'
+                  AND arrived_at IS NULL;
                 """,
                 (now_iso, pod_id, user_id),
             )
             conn.commit()
+            return cursor.rowcount > 0
         finally:
             conn.close()
 
@@ -2557,23 +2613,39 @@ class DurableStorage:
         properties: Optional[dict] = None,
     ) -> int:
         """Records a privacy-preserving event for the pilot conversion funnel."""
+        clean_event = re.sub(r"[^a-z0-9_]", "_", str(event_name).lower().strip())[:64]
+        if len(clean_event) < 2:
+            raise ValueError("Invalid analytics event name.")
         conn = get_db_connection(self.db_path)
         try:
             now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            props_json = json.dumps(properties or {})
+            props_json = json.dumps(sanitize_analytics_properties(properties))
             cursor = conn.cursor()
             cursor.execute(
                 """
                 INSERT INTO analytics_events (user_id, event_name, properties_json, created_at)
                 VALUES (?, ?, ?, ?);
                 """,
-                (user_id, event_name, props_json, now_iso),
+                (user_id, clean_event, props_json, now_iso),
             )
             event_id = cursor.lastrowid
             conn.commit()
             return event_id
         finally:
             conn.close()
+
+    def record_analytics_event_safe(
+        self,
+        event_name: str,
+        user_id: Optional[str] = None,
+        properties: Optional[dict] = None,
+    ) -> int:
+        """Telemetry must never break a core pod or voice flow."""
+        try:
+            return self.record_analytics_event(event_name, user_id, properties)
+        except Exception as exc:
+            logger.warning("analytics_event_failed event=%s error=%s", event_name, exc)
+            return 0
 
     def get_funnel_metrics(self) -> dict:
         """Computes pilot conversion funnel metrics across pods and voice loops."""
@@ -2599,9 +2671,9 @@ class DurableStorage:
 
             cursor.execute("""
                 SELECT COUNT(*) FROM (
-                    SELECT user_id, COUNT(*) as cnt
+                    SELECT user_id, COUNT(DISTINCT json_extract(properties_json, '$.pod_id')) as cnt
                     FROM analytics_events
-                    WHERE event_name = 'pod_joined' AND user_id IS NOT NULL
+                    WHERE event_name = 'pod_attended' AND user_id IS NOT NULL
                     GROUP BY user_id
                     HAVING cnt >= 2
                 );
@@ -2646,7 +2718,7 @@ class DurableStorage:
                     "repeat": pod_repeats,
                     "join_conversion_rate": round(pod_joins / pod_views, 4) if pod_views > 0 else 0.0,
                     "quorum_conversion_rate": round(pod_quorums / pod_joins, 4) if pod_joins > 0 else 0.0,
-                    "repeat_rate": round(pod_repeats / pod_joins, 4) if pod_joins > 0 else 0.0,
+                    "repeat_rate": round(pod_repeats / pod_attended, 4) if pod_attended > 0 else 0.0,
                 },
                 "voice_funnel": {
                     "lobby_viewed": voice_views,

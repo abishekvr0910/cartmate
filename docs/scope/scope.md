@@ -183,7 +183,7 @@ Add a dedicated multi user Playwright test suite (`qa/tests/pods-and-voice.spec.
    - [x] Create `qa/tests/pods-and-voice.spec.ts` with two context pod quorum plus live chat delivery and two context voice match, hangup, and rating journeys
    - [x] Add a repository root subprocess test invoking `node qa/codex_mr02_destination_probe.cjs` inside `backend/test_voice_calls.py`
    - [x] Isolate `test_preflight_real_fastapi_app` in `ops/test_pilot_preflight.py` from cached `main.CARTMATE_ENV` state so root `pytest` passes
-- [x] Verify it: `/check verify end to end pod and voice browser journeys and root pytest isolation` (6/6 tests proven across Desktop Chromium and Pixel 7 mobile in 16.9s; 242/242 root pytest clean)
+- [x] Verify it: `/check verify end to end pod and voice browser journeys and root pytest isolation` (6/6 tests proven across Desktop Chromium and Pixel 7 mobile in 16.7s; 249/249 root pytest clean)
 - [x] Test it: `/test end to end pod and voice browser journeys and root pytest isolation`
 - [x] Review it: `/check review end to end pod and voice browser journeys and root pytest isolation`
 - [x] Document it: `/document`
