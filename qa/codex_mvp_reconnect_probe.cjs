@@ -41,7 +41,10 @@ async function stop(proc) {
   const port = listener.address().port;
   await new Promise(resolve => listener.close(resolve));
   const base = `http://127.0.0.1:${port}`;
-  const start = () => spawn('python', [path.join(__dirname, 'operator_pilot_harness.py')], {
+  const venvWin = path.join(__dirname, '..', 'backend', '.venv', 'Scripts', 'python.exe');
+  const venvPosix = path.join(__dirname, '..', 'backend', '.venv', 'bin', 'python');
+  const pythonBin = process.env.PYTHON || (process.platform === 'win32' && fs.existsSync(venvWin) ? venvWin : (fs.existsSync(venvPosix) ? venvPosix : 'python'));
+  const start = () => spawn(pythonBin, [path.join(__dirname, 'operator_pilot_harness.py')], {
     cwd: __dirname, windowsHide: true, stdio: 'ignore',
     env: { ...process.env, CARTMATE_DATABASE_PATH: db, CARTMATE_OPERATOR_PILOT_PORT: String(port), JEV_MODE: 'disabled' },
   });

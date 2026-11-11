@@ -1,12 +1,14 @@
 # Progress tracker — 2026-11-11
 
-## Completed: Phase 4 audit closure, funnel telemetry & baseline reconciliation (2026-11-11)
+## Completed: Full automated checklist re-execution & verification (2026-11-11)
 
-* **Git Status:** Commit `7a24f91` on branch `main` in sync with `origin/main`; coturn/TURN relay wired in Compose, pending EC2 deployment. H-02 remains NOT RUN.
-* **Backend & Ops Test Suite:** **250 passed, 0 failed** in 71.57s (`pytest -p no:cacheprovider -q` from root; includes all backend units, 13 adversarial review tests, 12 ops preflight tests, 3 disaster recovery tests, and 7 funnel analytics tests).
-* **Multi-User Pods & Voice E2E Suite:** **6/6 passed** in 16.8s across Desktop Chromium and Mobile Chrome Pixel 7 (`qa/tests/pods-and-voice.spec.ts` via isolated runner `qa/run_pods_and_voice.py`).
+* **Backend & Ops Test Suite:** **250 passed, 0 failed** in 62.71s (`pytest -p no:cacheprovider -q` from root; includes all backend units, 13 adversarial review tests, 12 ops preflight tests, 3 disaster recovery tests, and 7 funnel analytics tests).
+* **Diagnostic Security Probes:** **All 9 exit 0** (`codex_url_unavailable_probe.cjs`, `codex_origin_matrix_probe.cjs`, `codex_mr02_destination_probe.cjs`, `codex_mvp_config_probe.cjs`, `codex_mvp_reconnect_probe.cjs`, `codex_ci_prerequisite_probe.py`, `codex_mvp_preflight_probe.py`, `codex_private_pilot_probe.py`, `codex_recovery_boundary_probe.py`).
+* **Isolated Staging Operator-Pilot Suite:** **16 passed, 0 failed** in 1.7m across Desktop Chromium and Mobile Chrome Pixel 7 (`qa/playwright.operator-pilot.config.ts`).
+* **Isolated Staging No-Demo Suite:** **4 passed, 0 failed** in 18.7s across Desktop Chromium and Mobile Chrome (`qa/playwright.no-demo.config.ts`).
+* **Multi-User Pods & Voice E2E Suite:** **6 passed, 0 failed** in 17.5s across Desktop Chromium and Mobile Chrome Pixel 7 (`qa/tests/pods-and-voice.spec.ts` via isolated runner `qa/run_pods_and_voice.py`).
+* **Frontend Lint & Build:** `oxlint` 0 errors / 0 warnings (202ms on 29 files); `tsc -b && vite build` clean in 2.49s (`dist/assets/index-CkFeURvF.js`). Lazy-loaded chunks verified (`PodFeed-D7QOTGiB.js` 29.65 kB, `VoiceCallHUD-CJ_P2hki.js` 36.12 kB).
 * **Migrations Completed & Reconciled:** 0011 (micro pods, immutable), 0012 (ephemeral voice calls), 0013 (atomic strict rebuild + production TURN startup guard), 0014 (idempotent third places seed across Katowice, Gliwice, Chorzów), 0015 (privacy-preserving conversion funnel analytics).
-* **Frontend Build & Localization:** 0 errors, full 4-language support (`pl`, `en`, `uk`, `ru`) verified across PodFeed, VoiceCallHUD, and SafetyHub.
 * **Integrity & Operational Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` untouched; H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
 
 ## Completed: Git repository initialized & clean deployment packaging (2026-10-15)
