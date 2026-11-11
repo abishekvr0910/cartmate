@@ -1,6 +1,6 @@
 # CartMate Launch Readiness
 
-**Phase 4 Audit Closure, Funnel Telemetry & Verification (2026-11-11):** Git HEAD `5b847df` on branch `main`; the coturn/TURN relay wiring is uncommitted and not deployed. H-02 remains NOT RUN.
+**Phase 4 Audit Closure, Funnel Telemetry & Verification (2026-11-11):** Git HEAD `7a24f91` on branch `main` in sync with `origin/main`; coturn/TURN relay wired in Compose, pending EC2 deployment. H-02 remains NOT RUN.
 * **Backend & Ops Test Suite:** **250 passed, 0 failed** in 71.57s (`pytest -p no:cacheprovider -q` from root; includes all backend units, 13 adversarial review tests, 12 ops preflight tests, 3 disaster recovery tests, and 7 funnel analytics tests).
 * **Multi-User Pods & Voice E2E Suite:** **6/6 passed** in 16.8s across Desktop Chromium and Mobile Chrome Pixel 7 (`qa/tests/pods-and-voice.spec.ts` via isolated runner `qa/run_pods_and_voice.py`).
 * **Migrations Completed & Reconciled:** 0011 (micro pods, immutable), 0012 (ephemeral voice calls), 0013 (atomic strict rebuild + production TURN startup guard), 0014 (idempotent third places seed across Katowice, Gliwice, Chorzów), 0015 (privacy-preserving conversion funnel analytics).

@@ -191,7 +191,7 @@ Spec 0013 in `docs/specs/0013-final-audit-closure.md`
 
 ## Deferred
 Out of scope for the current build pass, kept so the plan stays honest.
-- **Dedicated relay host**: separate media relay infrastructure outside the single approved pilot host · needs a decision
+- **Dedicated relay host**: separate media relay infrastructure outside the single approved pilot host · needs a decision (pilot co-locates coturn on EC2 host)
 - **Background push notifications**: prompt for browser notification permissions when joining a pod · needs a decision
 - **Audio output device switcher**: speakerphone routing toggle across mobile browsers · Prototype
 
