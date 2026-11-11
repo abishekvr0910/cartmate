@@ -27,9 +27,9 @@ test.describe('Micro-Pods Quorum & Ephemeral Voice Journeys', () => {
 
     // Create pod as Zuzanna (confirmed = 1)
     const now = new Date();
-    const startsAt = new Date(now.getTime() + 7200000).toISOString();
-    const endsAt = new Date(now.getTime() + 10800000).toISOString();
-    const deadlineAt = new Date(now.getTime() + 3600000).toISOString();
+    const startsAt = new Date(now.getTime() + 7200000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const endsAt = new Date(now.getTime() + 10800000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const deadlineAt = new Date(now.getTime() + 3600000).toISOString().replace(/\.\d{3}Z$/, 'Z');
 
     const podRes = await request.post('/api/pods', {
       headers: zuzannaHeaders,
@@ -86,12 +86,12 @@ test.describe('Micro-Pods Quorum & Ephemeral Voice Journeys', () => {
     await podsBtnB.click();
 
     // Verify Context A sees pod as forming with waiting for quorum
-    const podCardA = pageA.locator(`div:has-text("Spacer Park #${timestamp}")`).last();
+    const podCardA = pageA.locator('.glass-card').filter({ hasText: `Spacer Park #${timestamp}` });
     await expect(podCardA.getByText(/Formowanie|Forming/i).first()).toBeVisible({ timeout: 10000 });
     await expect(podCardA.getByText(/Oczekiwanie na quorum|Waiting for quorum/i).first()).toBeVisible();
 
     // Context B sees pod card with join button (+1 seat)
-    const podCardB = pageB.locator(`div:has-text("Spacer Park #${timestamp}")`).last();
+    const podCardB = pageB.locator('.glass-card').filter({ hasText: `Spacer Park #${timestamp}` });
     const joinBtn = podCardB.getByRole('button', { name: /Dołącz do poda|Join pod/i }).first();
     await expect(joinBtn).toBeVisible({ timeout: 10000 });
 
@@ -133,25 +133,33 @@ test.describe('Micro-Pods Quorum & Ephemeral Voice Journeys', () => {
     await contextB.close();
   });
 
-  test('two-user WebRTC voice call connects, displays peer, hangs up, and submits rating', async ({ browser }) => {
-    // Context A: User Zuzanna
+  test('two-user WebRTC voice call connects, displays peer, hangs up, and submits rating', async ({ browser }, testInfo) => {
+    const isMobile = testInfo.project.name === 'mobile-chrome';
+    const userA = isMobile
+      ? { token: 'token_mateusz', id: 'usr_mateusz', name: 'Mateusz' }
+      : { token: 'token_ania', id: 'usr_ania', name: 'Ania' };
+    const userB = isMobile
+      ? { token: 'token_zuzanna', id: 'usr_zuzanna', name: 'Zuzanna' }
+      : { token: 'token_jakub', id: 'usr_jakub', name: 'Jakub' };
+
+    // Context A
     const contextA = await browser.newContext();
     const pageA = await contextA.newPage();
     await pageA.goto('/');
-    await pageA.evaluate(() => {
-      localStorage.setItem('cartmate_token', 'token_zuzanna');
-      localStorage.setItem('cartmate_user_id', 'usr_zuzanna');
-    });
+    await pageA.evaluate((u) => {
+      localStorage.setItem('cartmate_token', u.token);
+      localStorage.setItem('cartmate_user_id', u.id);
+    }, userA);
     await pageA.reload();
 
-    // Context B: User Marek
+    // Context B
     const contextB = await browser.newContext();
     const pageB = await contextB.newPage();
     await pageB.goto('/');
-    await pageB.evaluate(() => {
-      localStorage.setItem('cartmate_token', 'token_marek');
-      localStorage.setItem('cartmate_user_id', 'usr_marek');
-    });
+    await pageB.evaluate((u) => {
+      localStorage.setItem('cartmate_token', u.token);
+      localStorage.setItem('cartmate_user_id', u.id);
+    }, userB);
     await pageB.reload();
 
     // Both navigate to "Głos 10'" tab
@@ -175,8 +183,8 @@ test.describe('Micro-Pods Quorum & Ephemeral Voice Journeys', () => {
     await connectB.click();
 
     // Both transition to connecting or in-call HUD with peer info
-    await expect(pageA.locator('text=/Marek|Łączenie rozmówcy|Connecting/i').first()).toBeVisible({ timeout: 10000 });
-    await expect(pageB.locator('text=/Zuzanna|Łączenie rozmówcy|Connecting/i').first()).toBeVisible({ timeout: 10000 });
+    await expect(pageA.locator(`text=/${userB.name}|Łączenie rozmówcy|Connecting/i`).first()).toBeVisible({ timeout: 10000 });
+    await expect(pageB.locator(`text=/${userA.name}|Łączenie rozmówcy|Connecting/i`).first()).toBeVisible({ timeout: 10000 });
 
     // Context A clicks hangup ("Koniec" / "Zakończ rozmowę")
     const hangupBtnA = pageA.getByRole('button', { name: /Koniec|End/i }).first();
@@ -207,8 +215,8 @@ test.describe('Micro-Pods Quorum & Ephemeral Voice Journeys', () => {
   test('header language switcher cycles PL -> EN -> UK -> RU with zero residual Polish in SafetyHub, PodFeed, and VoiceCallHUD', async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => {
-      localStorage.setItem('cartmate_token', 'token_zuzanna');
-      localStorage.setItem('cartmate_user_id', 'usr_zuzanna');
+      localStorage.setItem('cartmate_token', 'token_ola');
+      localStorage.setItem('cartmate_user_id', 'usr_ola');
     });
     await page.reload();
 
@@ -230,8 +238,8 @@ test.describe('Micro-Pods Quorum & Ephemeral Voice Journeys', () => {
     // Check Safety Hub in English
     const safetyBtn = page.getByRole('navigation').getByRole('button', { name: /Safety/i });
     await safetyBtn.click();
-    await expect(page.getByText('Safety Hub & Human Trust')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('Your Tier')).toBeVisible();
+    await expect(page.getByText(/Trust & Safety Hub/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/Your.*Tier/i)).toBeVisible();
 
     // Check Pods in English
     const nearbyBtn = page.getByRole('navigation').getByRole('button', { name: /Radar|Nearby/i }).first();

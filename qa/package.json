@@ -7,6 +7,7 @@
     "test": "playwright test",
     "test:no-demo": "playwright test --config=playwright.no-demo.config.ts",
     "test:operator-pilot": "playwright test --config=playwright.operator-pilot.config.ts",
+    "test:pods-and-voice": "python run_pods_and_voice.py",
     "test:headed": "playwright test --headed",
     "test:report": "playwright show-report"
   },
