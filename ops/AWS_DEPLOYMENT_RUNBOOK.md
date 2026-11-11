@@ -12,6 +12,7 @@ This guide prepares a closed, operator-admitted Silesia staging pilot on **AWS L
 * **Storage Layer:** Named Docker volume (`cartmate-data`) mapped to persistent EBS storage, preserving `pilot_live.db` across container restarts.
 * **Process Concurrency:** Single worker (`--workers 1`) to guarantee SQLite WAL lock integrity and in-process WebSocket connection state.
 * **TLS & Reverse Proxy:** Caddy reverse proxy automatically obtains, renews, and serves SSL/TLS certificates via Let's Encrypt, routing REST (`/api`) and WebSockets (`/ws`) over HTTPS on port 443.
+* **WebRTC TURN Relay:** A pinned coturn container listens on UDP/TCP 3478 and relay ports 49160-49200. The current Compose file requires `CARTMATE_TURN_SECRET`, `CARTMATE_TURN_EXTERNAL_IP`, and `CARTMATE_TURN_PRIVATE_IP`; see the EC2 runbook for the authoritative setup.
 
 ---
 
@@ -23,7 +24,7 @@ This guide prepares a closed, operator-admitted Silesia staging pilot on **AWS L
    * Platform: **Linux/Unix** | Blueprint: **OS Only -> Ubuntu 24.04 LTS**.
    * Plan: **2 GB RAM / 2 vCPUs / 60 GB SSD** (listed at **USD 12/month** on 2026-10-13). Confirm the plan and price shown in your AWS console.
    * Under **Networking**, create and attach a **Static IP**.
-   * In **IPv4 Firewall**, ensure ports **80** (HTTP) and **443** (HTTPS) are open.
+   * In **IPv4 Firewall**, ensure ports **80** (HTTP), **443** (HTTPS), **3478** UDP/TCP, and **49160-49200** UDP are open.
 2. Keep SSH (22) available only for administration, and do not open the application container's port 8000 to the internet.
 
 ### 2.2 Configure DNS
@@ -45,7 +46,7 @@ SSH into your AWS instance and follow Docker's [official Ubuntu apt-repository i
 
 ### 3.2 Transfer Source & Configure Environment
 
-This repository is currently uncommitted and has no remote. First create and review a **private, clean source repository**; verify that it contains no `.env`, databases, backups, activation tokens, signing keys or other credentials. Do not package the entire working directory with `tar`: simple exclude patterns can miss nested secrets and local artifacts. Only after a reviewed push, clone the private repository on the server:
+First review the **private source repository** you intend to deploy; verify that it contains no `.env`, databases, backups, activation tokens, signing keys or other credentials. Do not package the entire working directory with `tar`: simple exclude patterns can miss nested secrets and local artifacts. Only after a reviewed push, clone the private repository on the server:
 
 ```bash
 # Replace YOUR-ACCOUNT with the account that owns the reviewed private repo.
@@ -63,10 +64,13 @@ Edit `.env` using `nano .env`:
 DOMAIN=cartmate.yourdomain.com
 CARTMATE_STAGING_ALLOWED_PHONES=<approved +48 test handset numbers, comma separated>
 SOS_WEBHOOK_SECRET=<unique random secret, at least 16 characters>
+CARTMATE_TURN_SECRET=<different unique random secret, at least 32 characters>
+CARTMATE_TURN_EXTERNAL_IP=<Elastic IP>
+CARTMATE_TURN_PRIVATE_IP=<instance private IPv4>
 CARTMATE_MODERATOR_USER_IDS=
 ```
 
-`docker-compose.yml` fixes staging, operator admission, direct-112-only SOS, console OTP with no SMS dispatch, disabled Jev, the database path and exact CORS origins. It sets `CARTMATE_DEPLOYMENT=1`, so the allowlist and webhook secret must be present even for the no-SMS operator pilot. Console OTP cannot be used as a substitute for operator admission. Do not commit `.env`, activation tokens, phone numbers or backups.
+`docker-compose.yml` fixes staging, operator admission, direct-112-only SOS, console OTP with no SMS dispatch, disabled Jev, the database path and exact CORS origins. It sets `CARTMATE_DEPLOYMENT=1`, so the allowlist, webhook secret and TURN credentials must be present even for the no-SMS operator pilot. Console OTP cannot be used as a substitute for operator admission. Do not commit `.env`, activation tokens, phone numbers or backups.
 
 ### 3.3 Build and Launch Containers
 ```bash
@@ -77,6 +81,7 @@ docker compose up -d --build
 ### 3.4 Verify Deployment
 * **Container Status:** `docker compose ps`
 * **Caddy Logs & SSL Certificate:** `docker compose logs -f caddy`
+* **TURN Listeners:** `sudo ss -lunpt | grep -E '3478|4916'` must show coturn; the firewall must allow UDP/TCP 3478 and UDP 49160-49200.
 * **Initial liveness:** `curl --fail https://cartmate.yourdomain.com/api/health`. `/api/ready` should return **503 with explicit blockers** until two trusted moderators have redeemed accounts and completed witnessed adult attestations. Require **200** only for the final pilot go/no-go.
 
 ---

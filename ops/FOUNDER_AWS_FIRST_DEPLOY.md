@@ -26,7 +26,7 @@ If you do not own a domain yet, stop after creating the instance and static IP. 
 ## What must be ready before deploying source
 
 1. Point the domain's **A record** to the attached static IPv4 address and verify it resolves. You can use your registrar's DNS; a Lightsail DNS zone is optional. See [AWS DNS guidance](https://docs.aws.amazon.com/lightsail/latest/userguide/understanding-dns-in-amazon-lightsail.html).
-2. Prepare a **private, reviewed source repository**. The current local CartMate worktree has no commit or remote, so `git clone` cannot yet work. Review staged and untracked files; exclude `.env`, databases, backups, activation/recovery codes, local signing keys and build artifacts before the first commit/push. Do not archive and upload the entire work directory. This is an engineering handoff step Codex can help complete once you provide the IP and domain; it does not require your AWS password.
+2. Prepare a **private, reviewed source repository** containing the exact commit to deploy. Review staged and untracked files; exclude `.env`, databases, backups, activation/recovery codes, local signing keys and build artifacts before the first commit/push. Do not archive and upload the entire work directory. This is an engineering handoff step Codex can help complete once you provide the IP and domain; it does not require your AWS password.
 3. Choose **two genuinely trusted adult operators** for witnessed age checks. A moderator can inspect reports and suspend or ban accounts; do not give that role to an ordinary participant just to turn readiness green. Confirm the time window during which a human can respond to incidents. No unattended 24/7 coverage has been demonstrated.
 
 ## Server deployment, once the private repository and domain exist
@@ -49,7 +49,7 @@ chmod 600 .env
 nano .env
 ```
 
-Set `DOMAIN` to the real **hostname only** (no `https://`), `CARTMATE_STAGING_ALLOWED_PHONES` to the private comma-separated `+48...` test-handset allowlist, and `SOS_WEBHOOK_SECRET` to a fresh random value of at least 16 characters (`openssl rand -hex 32` can generate one locally). Leave `CARTMATE_MODERATOR_USER_IDS=` blank until both operator accounts exist. Keep `CARTMATE_ENV=staging`, `CARTMATE_DEPLOYMENT=1`, operator admission and manual age pilot enabled, `SOS_PROVIDER=disabled`, `OTP_PROVIDER=console`, and `JEV_MODE=disabled` as in the template/Compose file. **The staging deployment guard requires a phone allowlist even though operator admission sends no SMS.** Do not put the secret or numbers in Git, chat or screenshots.
+Set `DOMAIN` to the real **hostname only** (no `https://`), `CARTMATE_STAGING_ALLOWED_PHONES` to the private comma-separated `+48...` test-handset allowlist, and `SOS_WEBHOOK_SECRET` to a fresh random value of at least 16 characters (`openssl rand -hex 32` can generate one locally). Leave `CARTMATE_MODERATOR_USER_IDS=` blank until both operator accounts exist. Keep `CARTMATE_ENV=staging`, `CARTMATE_DEPLOYMENT=1`, operator admission and manual age pilot enabled, `SOS_PROVIDER=disabled`, `OTP_PROVIDER=console`, and `JEV_MODE=disabled` as in the template/Compose file. **The staging deployment guard requires a phone allowlist even though operator admission sends no SMS.** Do not put the secret or numbers in Git, chat or screenshots. The current Compose file also requires `CARTMATE_TURN_SECRET`, `CARTMATE_TURN_EXTERNAL_IP`, and `CARTMATE_TURN_PRIVATE_IP` for the coturn relay; use the EC2 runbook's TURN setup and open UDP/TCP 3478 plus UDP 49160-49200.
 
 ```bash
 sudo docker compose config --quiet

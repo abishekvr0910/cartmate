@@ -296,6 +296,22 @@ def test_voice_terminate_reasons_and_reported_quota(clean_db):
     asyncio.run(_test())
 
 
+def test_staging_readiness_blocks_missing_or_default_turn_secret(monkeypatch):
+    import main
+
+    monkeypatch.setattr(main, "CARTMATE_ENV", "staging")
+    monkeypatch.setattr(main, "is_production", lambda: True)
+    monkeypatch.setenv("CARTMATE_DATABASE_PATH", "isolated-turn-readiness.db")
+    monkeypatch.delenv("CARTMATE_TURN_SECRET", raising=False)
+
+    blockers = client.get("/api/ready").json()["blockers"]
+    assert any("CARTMATE_TURN_SECRET" in blocker for blocker in blockers)
+
+    monkeypatch.setenv("CARTMATE_TURN_SECRET", "cartmate_ephemeral_turn_secret_dev")
+    blockers = client.get("/api/ready").json()["blockers"]
+    assert any("CARTMATE_TURN_SECRET" in blocker for blocker in blockers)
+
+
 def test_voice_disconnect_grace_and_turn_secret_and_compile(clean_db, monkeypatch):
     import os
     import py_compile
@@ -314,6 +330,7 @@ def test_voice_disconnect_grace_and_turn_secret_and_compile(clean_db, monkeypatc
     monkeypatch.setenv("CARTMATE_TURN_SECRET", "strong-unique-production-turn-secret-999")
     ice_prod_custom = voice_call_manager.get_ice_servers("usr_zuzanna")
     assert any("turn:" in str(s.get("urls")) for s in ice_prod_custom)
+    assert all("turns:" not in str(s.get("urls")) for s in ice_prod_custom)
     monkeypatch.setenv("CARTMATE_ENV", "development")
 
     async def _test_grace():

@@ -90,7 +90,6 @@ class VoiceCallManager:
                 "urls": [
                     f"turn:{turn_host}:3478?transport=udp",
                     f"turn:{turn_host}:3478?transport=tcp",
-                    f"turns:{turn_host}:443?transport=tcp",
                 ],
                 "username": username,
                 "credential": credential,

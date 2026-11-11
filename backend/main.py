@@ -654,10 +654,10 @@ def launch_readiness_check():
     if not AGE_ASSURANCE_TRUSTED_PROVIDERS:
         blockers.append("The approved 18+ age-assurance provider and verification flow are not configured.")
     turn_secret_env = os.getenv("CARTMATE_TURN_SECRET", "")
-    if CARTMATE_ENV == "production" and (not turn_secret_env or turn_secret_env == "cartmate_ephemeral_turn_secret_dev"):
-        blockers.append("Configure a unique CARTMATE_TURN_SECRET for production WebRTC TURN relay.")
-    elif turn_secret_env == "cartmate_ephemeral_turn_secret_dev" and is_production():
-        blockers.append("Configure a unique CARTMATE_TURN_SECRET for production WebRTC TURN relay.")
+    if CARTMATE_ENV in {"staging", "production"} and (
+        not turn_secret_env or turn_secret_env == "cartmate_ephemeral_turn_secret_dev"
+    ):
+        blockers.append("Configure a unique CARTMATE_TURN_SECRET for staging/production WebRTC TURN relay.")
     # Direct 112 calling remains available while contact notification is disabled.
 
     return JSONResponse(
