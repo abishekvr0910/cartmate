@@ -13,6 +13,7 @@
 * **Frontend Lint & Build:** `oxlint` 0 errors / 0 warnings; `tsc -b && vite build` clean in 757ms (`dist/assets/index-Cq9K6qZK.js`).
 * **Isolated Staging Operator-Pilot Suite:** **16 passed** in 1.6m across Desktop Chromium and Mobile Chrome Pixel 7 (`qa/playwright.operator-pilot.config.ts`).
 * **Isolated Staging No-Demo Suite:** **4 passed** in 15.2s across Desktop Chromium and Mobile Chrome (`qa/playwright.no-demo.config.ts`).
+* **Isolated Micro-Pods & Voice Suite (Feature 13):** **6 passed** in 16.9s across Desktop Chromium and Mobile Chrome Pixel 7 (`qa/tests/pods-and-voice.spec.ts` via `qa/run_pods_and_voice.py`).
 * **Full Development Playwright Suite:** **42 passed** in 1.3m across Desktop Chromium and Mobile Chrome (`qa/playwright.config.ts`), with `CARTMATE_MODERATOR_USER_IDS=usr_zuzanna` on dedicated disposable SQLite DB.
 * **Distinct Test Total:** **246 distinct automated tests passed** (172 + 12 + 16 + 4 + 42) + 9 diagnostic probes.
 * **WebSocket Query String & Ticket Clarification:** Long-lived session tokens strictly stay out of URLs (exchanged via POST `/api/auth/ws-ticket` in auth headers). Short-lived (30s) single-use tickets are placed in the WebSocket connection query string (`/ws?ticket=...`) by `socket.ts:86`. Uvicorn ticket redaction is active; reverse-proxy Caddy access logging must be verified on the deployed EC2 container.

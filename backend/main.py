@@ -9,7 +9,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 from fastapi import FastAPI, Depends, Header, HTTPException, Query, Body, WebSocket, WebSocketDisconnect, status, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -3737,6 +3737,8 @@ async def create_micro_pod(
             spend_currency=req.spend_currency,
         )
         pod = storage.get_pod(pod_id)
+        storage.record_analytics_event("pod_created", current_user.id, {"pod_id": pod_id, "template_code": req.template_code})
+        storage.record_analytics_event("pod_joined", current_user.id, {"pod_id": pod_id, "is_host": True})
         return pod
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
@@ -3780,6 +3782,9 @@ async def join_pod_endpoint(
         await ws_manager.broadcast(f"pod:{pod_id}", "pod.member_joined", joined_payload)
         if pod.get("place_city"):
             await ws_manager.broadcast(f"city:{pod['place_city'].lower()}", "pod.member_joined", joined_payload)
+        storage.record_analytics_event("pod_joined", current_user.id, {"pod_id": pod_id, "is_host": False})
+        if pod.get("status") in ("quorum", "completed"):
+            storage.record_analytics_event("pod_quorum_reached", current_user.id, {"pod_id": pod_id, "confirmed_count": pod.get("confirmed_count")})
         return pod
     except ValueError as ve:
         raise HTTPException(status_code=409, detail=str(ve))
@@ -3859,6 +3864,17 @@ def sweep_unconfirmed_pods(
     """Cancels pods that failed to reach quorum before their deadline (moderator-only)."""
     cancelled = storage.cancel_unconfirmed_pods()
     return {"cancelled_count": cancelled}
+
+
+@app.post("/api/pods/{pod_id}/arrived")
+def mark_pod_arrived(
+    pod_id: int,
+    current_user: UserPrivateSchema = Depends(require_user),
+):
+    """Marks the authenticated user arrived at the verified third place meeting point."""
+    storage.mark_pod_member_arrived(pod_id, current_user.id)
+    storage.record_analytics_event("pod_attended", current_user.id, {"pod_id": pod_id})
+    return {"status": "arrived", "pod_id": pod_id, "user_id": current_user.id}
 
 
 # --- Track 2: 10-Minute Remote Voice Calls Endpoints ---
@@ -3959,6 +3975,11 @@ async def rate_voice_call(
             report_tag=request.report_tag,
             details=request.details,
         )
+        storage.record_analytics_event(
+            "voice_call_rated",
+            current_user.id,
+            {"call_id": call_id, "rating": request.rating, "rating_id": rating_id},
+        )
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=409, detail="To połączenie zostało już ocenione lub dane oceny są nieprawidłowe.")
     except ValueError as ve:
@@ -4033,6 +4054,42 @@ async def hangup_voice_call(
         await ws_manager.close_user(target_id)
 
     return {"success": True, "result": res}
+
+
+# --- Track 3: Pilot Funnel Telemetry & Conversion Analytics ---
+
+class AnalyticsEventCreate(BaseModel):
+    event: str = Field(min_length=2, max_length=64)
+    properties: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/analytics/events")
+async def record_client_analytics_event(
+    payload: AnalyticsEventCreate,
+    current_user: Optional[UserPrivateSchema] = Depends(optional_user),
+):
+    """
+    Client-side telemetry collector for the 100-person Silesia pilot conversion funnel.
+    Privacy-preserving: stores pseudonymous user ID, event name, sanitized properties, and UTC timestamp.
+    """
+    user_id = current_user.id if current_user else None
+    if user_id:
+        rate_limiter.assert_allowed(f"analytics:{user_id}", 60, 60, "wysyłania zdarzeń telemetrycznych")
+    clean_event = re.sub(r"[^a-z0-9_]", "_", payload.event.lower().strip())[:64]
+    event_id = storage.record_analytics_event(
+        event_name=clean_event,
+        user_id=user_id,
+        properties=payload.properties or {},
+    )
+    return {"status": "recorded", "event_id": event_id}
+
+
+@app.get("/api/analytics/funnel")
+def get_funnel_analytics(
+    current_user: UserPrivateSchema = Depends(require_moderator),
+):
+    """Returns aggregated conversion metrics across signup -> pod view -> join -> quorum -> attend -> repeat."""
+    return storage.get_funnel_metrics()
 
 
 # Serve React frontend and the API from one HTTPS origin. Keep this

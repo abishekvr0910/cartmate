@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Pod, PodMessage } from '../types';
 import type { Language } from '../locales';
-import { fetchPodFeed, joinPod, leavePod, fetchPodMessages, sendPodMessage } from '../api';
+import { fetchPodFeed, joinPod, leavePod, fetchPodMessages, sendPodMessage, trackEvent } from '../api';
 import { realtime } from '../realtime/socket';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import {
@@ -369,7 +369,8 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect
     void loadFeed();
-  }, [loadFeed]);
+    void trackEvent('pod_feed_viewed', { lang, selected_city: selectedCity });
+  }, [loadFeed, lang, selectedCity]);
 
   // Feed-level realtime subscription: subscribe to joined pods and listen for quorum shifts even when drawer is closed
   const joinedPodIdsKey = pods
@@ -494,6 +495,7 @@ export const PodFeed: React.FC<PodFeedProps> = ({ token, currentUserId, onRequir
     }
     setActivePodChat(pod);
     setChatError(null);
+    void trackEvent('pod_chat_opened', { pod_id: pod.id, is_quorum: pod.status === 'quorum' });
     try {
       const msgs = await fetchPodMessages(pod.id, token);
       setChatMessages(msgs);

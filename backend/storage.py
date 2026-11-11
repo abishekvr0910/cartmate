@@ -334,6 +334,11 @@ MIGRATIONS: List[Tuple[int, str, str]] = [
         "seed_pilot_third_places",
         open(os.path.join(os.path.dirname(__file__), "migrations", "0014_seed_pilot_third_places.sql"), "r", encoding="utf-8").read(),
     ),
+    (
+        15,
+        "pilot_funnel_analytics",
+        open(os.path.join(os.path.dirname(__file__), "migrations", "0015_pilot_funnel_analytics.sql"), "r", encoding="utf-8").read(),
+    ),
 ]
 
 
@@ -2197,6 +2202,22 @@ class DurableStorage:
         finally:
             conn.close()
 
+    def mark_pod_member_arrived(self, pod_id: int, user_id: str) -> None:
+        conn = get_db_connection(self.db_path)
+        try:
+            now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            conn.execute(
+                """
+                UPDATE pod_members
+                SET arrived_at = ?
+                WHERE pod_id = ? AND user_id = ? AND status = 'confirmed';
+                """,
+                (now_iso, pod_id, user_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
     def get_pod_messages(self, pod_id: int, viewer_user_id: str) -> List[dict]:
         conn = get_db_connection(self.db_path)
         try:
@@ -2526,6 +2547,117 @@ class DurableStorage:
                 (user_a_id, user_b_id, user_b_id, user_a_id),
             )
             return cursor.fetchone() is not None
+        finally:
+            conn.close()
+
+    def record_analytics_event(
+        self,
+        event_name: str,
+        user_id: Optional[str] = None,
+        properties: Optional[dict] = None,
+    ) -> int:
+        """Records a privacy-preserving event for the pilot conversion funnel."""
+        conn = get_db_connection(self.db_path)
+        try:
+            now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            props_json = json.dumps(properties or {})
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO analytics_events (user_id, event_name, properties_json, created_at)
+                VALUES (?, ?, ?, ?);
+                """,
+                (user_id, event_name, props_json, now_iso),
+            )
+            event_id = cursor.lastrowid
+            conn.commit()
+            return event_id
+        finally:
+            conn.close()
+
+    def get_funnel_metrics(self) -> dict:
+        """Computes pilot conversion funnel metrics across pods and voice loops."""
+        conn = get_db_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+
+            # Pod funnel stages
+            cursor.execute("SELECT COUNT(DISTINCT user_id) FROM analytics_events WHERE event_name = 'signup' AND user_id IS NOT NULL;")
+            signups = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(DISTINCT user_id) FROM analytics_events WHERE event_name IN ('pod_feed_viewed', 'first_pod_viewed') AND user_id IS NOT NULL;")
+            pod_views = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(DISTINCT user_id) FROM analytics_events WHERE event_name = 'pod_joined' AND user_id IS NOT NULL;")
+            pod_joins = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(DISTINCT user_id) FROM analytics_events WHERE event_name = 'pod_quorum_reached' AND user_id IS NOT NULL;")
+            pod_quorums = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(DISTINCT user_id) FROM analytics_events WHERE event_name = 'pod_attended' AND user_id IS NOT NULL;")
+            pod_attended = cursor.fetchone()[0]
+
+            cursor.execute("""
+                SELECT COUNT(*) FROM (
+                    SELECT user_id, COUNT(*) as cnt
+                    FROM analytics_events
+                    WHERE event_name = 'pod_joined' AND user_id IS NOT NULL
+                    GROUP BY user_id
+                    HAVING cnt >= 2
+                );
+            """)
+            pod_repeats = cursor.fetchone()[0]
+
+            # Voice funnel stages
+            cursor.execute("SELECT COUNT(DISTINCT user_id) FROM analytics_events WHERE event_name = 'voice_lobby_viewed' AND user_id IS NOT NULL;")
+            voice_views = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(DISTINCT user_id) FROM analytics_events WHERE event_name = 'voice_queue_entered' AND user_id IS NOT NULL;")
+            voice_queues = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(DISTINCT user_id) FROM analytics_events WHERE event_name = 'voice_call_connected' AND user_id IS NOT NULL;")
+            voice_connects = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(DISTINCT user_id) FROM analytics_events WHERE event_name = 'voice_call_rated' AND user_id IS NOT NULL;")
+            voice_rated = cursor.fetchone()[0]
+
+            cursor.execute("""
+                SELECT COUNT(*) FROM (
+                    SELECT user_id, COUNT(*) as cnt
+                    FROM analytics_events
+                    WHERE event_name = 'voice_call_connected' AND user_id IS NOT NULL
+                    GROUP BY user_id
+                    HAVING cnt >= 2
+                );
+            """)
+            voice_repeats = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM analytics_events;")
+            total_events = cursor.fetchone()[0]
+
+            return {
+                "total_events": total_events,
+                "pod_funnel": {
+                    "signups": signups,
+                    "first_pod_view": pod_views,
+                    "pod_join": pod_joins,
+                    "quorum_reached": pod_quorums,
+                    "attend": pod_attended,
+                    "repeat": pod_repeats,
+                    "join_conversion_rate": round(pod_joins / pod_views, 4) if pod_views > 0 else 0.0,
+                    "quorum_conversion_rate": round(pod_quorums / pod_joins, 4) if pod_joins > 0 else 0.0,
+                    "repeat_rate": round(pod_repeats / pod_joins, 4) if pod_joins > 0 else 0.0,
+                },
+                "voice_funnel": {
+                    "lobby_viewed": voice_views,
+                    "queue_entered": voice_queues,
+                    "call_connected": voice_connects,
+                    "call_rated": voice_rated,
+                    "repeat": voice_repeats,
+                    "connect_rate": round(voice_connects / voice_queues, 4) if voice_queues > 0 else 0.0,
+                    "rating_rate": round(voice_rated / voice_connects, 4) if voice_connects > 0 else 0.0,
+                },
+            }
         finally:
             conn.close()
 

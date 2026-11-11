@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import type { User, VoiceStatusResponse, VoiceCallPeer } from '../types';
 import type { Language } from '../locales';
-import { fetchVoiceStatus, rateVoiceCall, hangupVoiceCall } from '../api';
+import { fetchVoiceStatus, rateVoiceCall, hangupVoiceCall, trackEvent } from '../api';
 import { realtime } from '../realtime/socket';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 
@@ -425,7 +425,8 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect
     loadStatus();
-  }, [loadStatus]);
+    void trackEvent('voice_lobby_viewed', { lang });
+  }, [loadStatus, lang]);
 
   // Cleanup WebRTC & Audio
   const cleanupMedia = useCallback(() => {

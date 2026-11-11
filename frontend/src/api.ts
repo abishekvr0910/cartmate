@@ -1227,4 +1227,38 @@ export async function hangupVoiceCall(
   return res.json();
 }
 
+/**
+ * Dispatches a privacy-preserving telemetry event to the pilot conversion funnel.
+ * Non-blocking and fail-safe: failures are suppressed to never interrupt user flows.
+ */
+export async function trackEvent(event: string, properties?: Record<string, any>): Promise<void> {
+  try {
+    const url = `${getApiBaseUrl()}/analytics/events`;
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(url),
+      },
+      body: JSON.stringify({ event, properties: properties || {} }),
+    });
+  } catch (err) {
+    // Suppressed to ensure telemetry never impacts core UX
+    console.debug('Telemetry dispatch failed:', err);
+  }
+}
+
+/**
+ * Retrieves the aggregated pilot funnel metrics (moderator-only).
+ */
+export async function fetchFunnelMetrics(): Promise<any> {
+  const url = `${getApiBaseUrl()}/analytics/funnel`;
+  const res = await fetch(url, { headers: getAuthHeaders(url) });
+  if (!res.ok) {
+    throw new Error('Failed to fetch funnel metrics');
+  }
+  return res.json();
+}
+
+
 

@@ -68,6 +68,26 @@ npm run test:operator-pilot
 
 Runs on Desktop Chromium and Mobile Chrome (Pixel 7 emulation). Uses an isolated disposable database and never accesses `cartmate.db` or `pilot_live.db`.
 
+## Micro-Pods & Ephemeral Voice Journey Suite (Phase 4 / Feature 13)
+
+The isolated Micro-Pods and Ephemeral Voice suite (`qa/tests/pods-and-voice.spec.ts`) tests the Phase 4 group-pod and peer-to-peer voice core loops against a dedicated disposable FastAPI backend and fresh SQLite database with verified Third Place anchors:
+
+1. **Micro-Pod Quorum & Real-Time Chat:** Host creates a pod at a verified anchor; participant joins pushing confirmed count from 2/3 to 3/5 quorum; asserts instantaneous UI quorum unlock without reload; exchanges live WebSocket chat messages; and verifies focus trap with Escape key drawer dismissal.
+2. **Two-User Ephemeral Voice Call & Rating:** Two users enqueue, match, receive simulated WebRTC media streams, display peer info, hang up via one-tap end call, and submit a respectful rating with confirmation.
+3. **Four-Language Header Cycling:** Cycles through `PL` -> `EN` -> `UK` -> `RU` across SafetyHub, PodFeed, and VoiceCallHUD, asserting zero residual Polish or untranslated fallbacks.
+
+Run on clean disposable storage:
+
+```powershell
+# From repository root:
+npm --prefix frontend run build
+python qa/run_pods_and_voice.py
+# Or from qa directory:
+npm run test:pods-and-voice
+```
+
+Passes 6/6 tests across Desktop Chromium and Mobile Chrome (Pixel 7 emulation).
+
 ## Independent Diagnostic Probes
 
 Two standalone diagnostic probes verify recovery security boundaries and environment invariants without touching production state:
