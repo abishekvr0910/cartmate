@@ -4,6 +4,7 @@ import {
   PhoneOff,
   Mic,
   MicOff,
+  Volume2,
   ShieldAlert,
   Clock,
   Sparkles,
@@ -94,6 +95,9 @@ const VOICE_COPY: Record<
     noCallers: string;
     micError: (detail: string) => string;
     cooldownButton: (seconds: number) => string;
+    speakerOnLabel: string;
+    speakerOffLabel: string;
+    micSilentWarning: string;
   }
 > = {
   pl: {
@@ -156,6 +160,9 @@ const VOICE_COPY: Record<
     noCallers: 'Brak dostępnych rozmówców w tej chwili.',
     micError: (detail) => `Błąd dostępu do mikrofonu: ${detail}`,
     cooldownButton: (seconds) => `Przerwa: ${seconds}s`,
+    speakerOnLabel: 'Głośnik',
+    speakerOffLabel: 'Słuchawka',
+    micSilentWarning: 'Mikrofon nie rejestruje dźwięku. Sprawdź, czy nie jest wyciszony sprzętowo.',
   },
   en: {
     title: '10-Minute Voice',
@@ -217,6 +224,9 @@ const VOICE_COPY: Record<
     noCallers: 'No callers available right now.',
     micError: (detail) => `Microphone access error: ${detail}`,
     cooldownButton: (seconds) => `Cooldown: ${seconds}s`,
+    speakerOnLabel: 'Speaker',
+    speakerOffLabel: 'Earpiece',
+    micSilentWarning: 'Microphone is not capturing sound. Check your physical mute switch.',
   },
   uk: {
     title: '10-Хвилинні Розмови',
@@ -278,6 +288,9 @@ const VOICE_COPY: Record<
     noCallers: 'Зараз немає доступних співрозмовників.',
     micError: (detail) => `Помилка доступу до мікрофона: ${detail}`,
     cooldownButton: (seconds) => `Перерва: ${seconds}s`,
+    speakerOnLabel: 'Динамік',
+    speakerOffLabel: 'Навушник',
+    micSilentWarning: 'Мікрофон не вловлює звук. Перевірте апаратне вимкнення звуку.',
   },
   ru: {
     title: '10-Минутные Разговоры',
@@ -339,6 +352,9 @@ const VOICE_COPY: Record<
     noCallers: 'Сейчас нет доступных собеседников.',
     micError: (detail) => `Ошибка доступа к микрофону: ${detail}`,
     cooldownButton: (seconds) => `Пауза: ${seconds}s`,
+    speakerOnLabel: 'Динамик',
+    speakerOffLabel: 'Наушник',
+    micSilentWarning: 'Микрофон не улавливает звук. Проверьте аппаратное выключение звука.',
   },
 };
 
@@ -359,6 +375,9 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [secondsRemaining, setSecondsRemaining] = useState<number>(600);
   const [audioLevel, setAudioLevel] = useState<number>(0);
+  const [waveLevels, setWaveLevels] = useState<number[]>(() => Array(9).fill(0));
+  const [isMicSilent, setIsMicSilent] = useState<boolean>(false);
+  const [isSpeakerphone, setIsSpeakerphone] = useState<boolean>(true);
   const [showBlockConfirm, setShowBlockConfirm] = useState<boolean>(false);
 
   // Rating State
@@ -384,6 +403,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
   const pendingOfferRef = useRef<{ sdp: string; call_id?: string } | null>(null);
   const activeCallIdRef = useRef<string | null>(null);
   const callStateRef = useRef<CallState>('idle');
+  const callSessionRef = useRef<number>(0);
 
   useEffect(() => {
     activeCallIdRef.current = activeCallId;
@@ -430,6 +450,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
 
   // Cleanup WebRTC & Audio
   const cleanupMedia = useCallback(() => {
+    callSessionRef.current += 1;
     pendingCandidatesRef.current = [];
     pendingOfferRef.current = null;
     if (countdownIntervalRef.current) {
@@ -453,7 +474,28 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
       audioContextRef.current = null;
     }
     setAudioLevel(0);
+    setWaveLevels(Array(9).fill(0));
+    setIsMicSilent(false);
   }, []);
+
+  // Audio output device toggle (Speakerphone / Earpiece)
+  const toggleSpeakerphone = useCallback(async () => {
+    const audioEl = remoteAudioRef.current;
+    try {
+      if (audioEl && 'setSinkId' in HTMLMediaElement.prototype) {
+        const devices = await navigator.mediaDevices?.enumerateDevices?.();
+        const outputs = devices?.filter((d) => d.kind === 'audiooutput') || [];
+        if (outputs.length > 1) {
+          const target = isSpeakerphone ? outputs[1] : outputs[0];
+          await (audioEl as any).setSinkId(target.deviceId);
+        }
+      }
+      setIsSpeakerphone((prev) => !prev);
+    } catch (err) {
+      console.warn('Speakerphone toggle warning:', err);
+      setIsSpeakerphone((prev) => !prev);
+    }
+  }, [isSpeakerphone]);
 
   const flushPendingCandidates = async (pc: RTCPeerConnection) => {
     if (!pc.remoteDescription) return;
@@ -474,7 +516,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
     };
   }, [cleanupMedia]);
 
-  // Audio level analyser loop
+  // Audio level analyser loop with Handy's logarithmic speech frequency bucketing & silence detection
   const startAudioAnalyser = (stream: MediaStream) => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -482,19 +524,76 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
       audioContextRef.current = ctx;
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 64;
+      analyser.fftSize = 128;
+      analyser.smoothingTimeConstant = 0.3;
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      const smoothedRef = Array(9).fill(0);
+      let silentFrames = 0;
+
       const checkVolume = () => {
         analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i];
+
+        // Handy 9-bar logarithmic speech visualizer across speech frequencies (bins 1..48)
+        const bucketRanges: [number, number][] = [
+          [1, 2], [2, 4], [4, 7], [7, 11], [11, 16],
+          [16, 22], [22, 29], [29, 37], [37, 48]
+        ];
+
+        let totalPower = 0;
+        const rawBuckets: number[] = [];
+
+        for (let b = 0; b < bucketRanges.length; b++) {
+          const [start, end] = bucketRanges[b];
+          let pSum = 0;
+          for (let i = start; i < end; i++) {
+            const mag = dataArray[i] || 0;
+            pSum += mag * mag;
+          }
+          const avgP = pSum / (end - start);
+          totalPower += avgP;
+
+          // Convert to dB with Handy calibrated range: -68 dB to -25 dB
+          const db = avgP > 1e-4 ? 20 * Math.log10(Math.sqrt(avgP) / 255) : -80;
+          const DB_MIN = -68.0;
+          const DB_MAX = -25.0;
+          const normalized = Math.max(0, Math.min(1, (db - DB_MIN) / (DB_MAX - DB_MIN)));
+          rawBuckets.push(normalized);
         }
-        const avg = sum / dataArray.length;
-        setAudioLevel(Math.min(100, Math.round((avg / 128) * 100)));
+
+        // Handy temporal exponential smoothing: prev * 0.7 + target * 0.3
+        for (let b = 0; b < 9; b++) {
+          smoothedRef[b] = smoothedRef[b] * 0.7 + rawBuckets[b] * 0.3;
+        }
+
+        // Handy 3-point spatial smoothing to eliminate visual jitter
+        const finalLevels = Array(9).fill(0);
+        for (let b = 0; b < 9; b++) {
+          const prev = b > 0 ? smoothedRef[b - 1] : smoothedRef[b];
+          const next = b < 8 ? smoothedRef[b + 1] : smoothedRef[b];
+          finalLevels[b] = smoothedRef[b] * 0.7 + prev * 0.15 + next * 0.15;
+        }
+
+        setWaveLevels(finalLevels);
+
+        const avgLevel = finalLevels.reduce((a, b) => a + b, 0) / 9;
+        setAudioLevel(Math.min(100, Math.round(avgLevel * 100)));
+
+        // Digital silence detection (Handy MicrophoneSilent pattern):
+        // If unmuted and total frequency power is negligible (< 10) for > 90 frames (~1.5s), warn user
+        if (totalPower < 10) {
+          silentFrames++;
+          if (silentFrames > 90) {
+            setIsMicSilent(true);
+          }
+        } else {
+          silentFrames = 0;
+          setIsMicSilent(false);
+        }
+
         animFrameRef.current = requestAnimationFrame(checkVolume);
       };
       animFrameRef.current = requestAnimationFrame(checkVolume);
@@ -525,9 +624,14 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
   // Start WebRTC Connection
   const initializeWebRtc = useCallback(
     async (callId: string, role: 'offerer' | 'answerer', iceServers: RTCIceServer[]) => {
+      const sessionId = ++callSessionRef.current;
       try {
         setCallState('connecting');
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        if (callSessionRef.current !== sessionId) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
         localStreamRef.current = stream;
         startAudioAnalyser(stream);
 
@@ -541,6 +645,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
         });
 
         pc.ontrack = (event) => {
+          if (callSessionRef.current !== sessionId) return;
           if (remoteAudioRef.current && event.streams[0]) {
             remoteAudioRef.current.srcObject = event.streams[0];
             remoteAudioRef.current.play().catch(() => {});
@@ -548,6 +653,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
         };
 
         pc.onicecandidate = (event) => {
+          if (callSessionRef.current !== sessionId) return;
           if (event.candidate) {
             realtime.send({
               action: 'voice.call_ice_candidate',
@@ -558,6 +664,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
         };
 
         pc.onconnectionstatechange = () => {
+          if (callSessionRef.current !== sessionId) return;
           if (pc.connectionState === 'connected') {
             setCallState('in_call');
             setSecondsRemaining(600);
@@ -582,6 +689,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
 
         if (role === 'offerer') {
           const offer = await pc.createOffer();
+          if (callSessionRef.current !== sessionId) return;
           await pc.setLocalDescription(offer);
           realtime.send({
             action: 'voice.call_offer',
@@ -592,7 +700,9 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
           const offerData = pendingOfferRef.current;
           pendingOfferRef.current = null;
           await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: offerData.sdp }));
+          if (callSessionRef.current !== sessionId) return;
           const answer = await pc.createAnswer();
+          if (callSessionRef.current !== sessionId) return;
           await pc.setLocalDescription(answer);
           realtime.send({
             action: 'voice.call_answer',
@@ -602,7 +712,16 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
           await flushPendingCandidates(pc);
         }
       } catch (err: any) {
-        setErrorMsg(vcopy.micError(err.message || 'permissions required'));
+        if (callSessionRef.current !== sessionId) return;
+        let detail = err?.message || 'permissions required';
+        if (err?.name === 'NotAllowedError') {
+          detail = 'Zezwolenie na mikrofon zostało odrzucone / Permission denied';
+        } else if (err?.name === 'NotFoundError') {
+          detail = 'Nie znaleziono mikrofonu / No microphone device found';
+        } else if (err?.name === 'NotReadableError') {
+          detail = 'Urządzenie audio zajęte / Audio device in use';
+        }
+        setErrorMsg(vcopy.micError(detail));
         setCallState('idle');
         cleanupMedia();
       }
@@ -869,7 +988,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
             <div
               className="absolute w-44 h-44 rounded-full border-2 border-indigo-500/20 transition-transform duration-75 ease-out"
               style={{
-                transform: `scale(${1 + audioLevel / 180})`,
+                transform: `scale(${1 + (waveLevels.reduce((a, b) => a + b, 0) / 9) * 0.25})`,
                 borderColor: audioLevel > 15 ? 'rgba(99, 102, 241, 0.7)' : 'rgba(99, 102, 241, 0.2)',
                 boxShadow:
                   audioLevel > 15
@@ -892,19 +1011,37 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
                 {formatTimer(secondsRemaining)}
               </span>
 
-              {/* Dynamic Equalizer Wave Bars */}
-              <div className="flex items-center gap-0.5 h-3 my-1">
-                <span className={`w-0.5 rounded-full bg-indigo-400 transition-all duration-75 ${audioLevel > 5 ? 'h-3' : 'h-1'}`} />
-                <span className={`w-0.5 rounded-full bg-indigo-300 transition-all duration-75 ${audioLevel > 15 ? 'h-4' : 'h-1.5'}`} />
-                <span className={`w-0.5 rounded-full bg-violet-400 transition-all duration-75 ${audioLevel > 25 ? 'h-3.5' : 'h-1'}`} />
-                <span className={`w-0.5 rounded-full bg-indigo-300 transition-all duration-75 ${audioLevel > 15 ? 'h-4' : 'h-1.5'}`} />
-                <span className={`w-0.5 rounded-full bg-indigo-400 transition-all duration-75 ${audioLevel > 5 ? 'h-3' : 'h-1'}`} />
+              {/* Dynamic Equalizer Wave Bars (Handy 9-bar logarithmic speech visualizer) */}
+              <div className="flex items-center gap-0.5 h-4 my-1">
+                {waveLevels.map((lvl, idx) => (
+                  <span
+                    key={idx}
+                    className={`w-0.5 rounded-full transition-all duration-75 ${
+                      idx === 4 ? 'bg-violet-400' : idx % 2 === 0 ? 'bg-indigo-400' : 'bg-indigo-300'
+                    }`}
+                    style={{
+                      height: `${Math.max(3, Math.min(16, Math.round(3 + Math.pow(lvl, 0.7) * 13)))}px`,
+                    }}
+                  />
+                ))}
               </div>
 
               <span className="text-[9px] text-slate-500 uppercase tracking-wider font-bold">
                 {vcopy.limit10}
               </span>
             </div>
+
+            {/* Digital silence / hardware mute warning badge (Handy MicrophoneSilent pattern) */}
+            {isMicSilent && !isMuted && callState === 'in_call' && (
+              <div
+                role="alert"
+                className="mt-3 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg py-1 px-3 flex items-center justify-center gap-1.5 animate-pulse z-10"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>{vcopy.micSilentWarning}</span>
+              </div>
+            )}
+
             {/* Milestone-only screen-reader announcer (5:00, 1:00, 0:30) */}
             <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
               {milestoneAnnouncement}
@@ -940,7 +1077,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
           </div>
 
           {/* In-Call Controls */}
-          <div className="w-full flex items-center justify-center gap-4">
+          <div className="w-full flex items-center justify-center gap-3">
             {/* Mute Button */}
             <button
               onClick={toggleMute}
@@ -953,6 +1090,20 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
             >
               {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
               <span className="text-[10px] mt-1 font-medium">{isMuted ? vcopy.micOffLabel : vcopy.micOnLabel}</span>
+            </button>
+
+            {/* Speakerphone / Output Switcher Button (Handy audio output device switcher pattern) */}
+            <button
+              onClick={toggleSpeakerphone}
+              className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition cursor-pointer ${
+                isSpeakerphone
+                  ? 'bg-indigo-600/20 border border-indigo-500/40 text-indigo-400'
+                  : 'bg-slate-800/90 border border-slate-700 text-slate-200 hover:text-white'
+              }`}
+              title={isSpeakerphone ? vcopy.speakerOnLabel : vcopy.speakerOffLabel}
+            >
+              <Volume2 className="w-6 h-6" />
+              <span className="text-[10px] mt-1 font-medium">{isSpeakerphone ? vcopy.speakerOnLabel : vcopy.speakerOffLabel}</span>
             </button>
 
             {/* Red Hangup Button */}
