@@ -1,5 +1,17 @@
 # CartMate Launch Readiness
 
+**Current test-isolation and voice hardening pass (2026-11-13):** Re-verified after the Handy-derived voice UX changes and the review remediation:
+* **Backend & Ops Test Suite:** **250 passed, 0 failed** in 88.52s (`pytest -p no:cacheprovider -q` from root).
+* **Database isolation:** root and backend `conftest.py` now force a disposable `CARTMATE_DATABASE_PATH`, and `storage.py` refuses to fall back to `backend/cartmate.db` under pytest. During this run `backend/cartmate.db` stayed at SHA-256 `4C6E08033FFF4BD6C819452E86EE621EBCDCEB3ABAA5148FB8229C9405CC840D`; it is **not** a clean seed and must not be used for pilot data. `ops/pilot_live.db` remains absent.
+* **Staging TURN fail-closed:** `voice_manager.py` now withholds TURN credentials for both staging and production when the secret is missing or still the development default; the regression test covers both environments.
+* **Isolated Staging Operator-Pilot Suite:** **16 passed, 0 failed** in 2.1m across Desktop Chromium and Mobile Chrome Pixel 7 after correcting the plan-save/accept response waits and using the backend venv for the restart harness.
+* **Isolated Staging No-Demo Suite:** **4 passed, 0 failed** in 22.7s.
+* **Multi-User Pods & Voice E2E Suite:** **6 passed, 0 failed** in 31.7s.
+* **Diagnostic Security Probes:** **All 9 exit 0**.
+* **Frontend Lint & Build:** `oxlint` clean; `tsc -b && vite build` clean in 1.73s (`index-DG6J2OnH.js`, `PodFeed-BpQPY5vP.js`, `VoiceCallHUD-Btgmo5ce.js`). Vite retains its non-fatal >500 kB chunk warning.
+* **Handy-derived voice UX:** 9-bar logarithmic visualizer, silence warning, Web Audio earcons, and a `setSinkId` output toggle are implemented in `VoiceCallHUD.tsx`; physical mobile output routing and browser support are **not** verified.
+* **Integrity & Gates:** H-01..H-06, coturn runtime, EC2 deployment, domain-bound APK, and physical-handset rehearsal remain strictly **NOT RUN**.
+
 **Full Automated Checklist Re-execution & Verification (2026-11-11):** Clean re-run of entire automated test surface across isolated harnesses:
 * **Backend & Ops Test Suite:** **250 passed, 0 failed** in 62.71s (`pytest -p no:cacheprovider -q` from root; includes all backend units, 13 adversarial review tests, 12 ops preflight tests, 3 disaster recovery tests, and 7 funnel analytics tests).
 * **Diagnostic Security Probes:** **All 9 exit 0** (`codex_url_unavailable_probe.cjs`, `codex_origin_matrix_probe.cjs`, `codex_mr02_destination_probe.cjs`, `codex_mvp_config_probe.cjs`, `codex_mvp_reconnect_probe.cjs`, `codex_ci_prerequisite_probe.py`, `codex_mvp_preflight_probe.py`, `codex_private_pilot_probe.py`, `codex_recovery_boundary_probe.py`).
@@ -8,13 +20,13 @@
 * **Multi-User Pods & Voice E2E Suite:** **6 passed, 0 failed** in 17.5s across Desktop Chromium and Mobile Chrome Pixel 7 (`qa/tests/pods-and-voice.spec.ts` via isolated runner `qa/run_pods_and_voice.py`).
 * **Frontend Lint & Build:** `oxlint` 0 errors / 0 warnings (202ms on 29 files); `tsc -b && vite build` clean in 2.49s (`dist/assets/index-CkFeURvF.js`). Lazy-loaded chunks verified (`PodFeed-D7QOTGiB.js` 29.65 kB, `VoiceCallHUD-CJ_P2hki.js` 36.12 kB).
 * **Migrations Completed & Reconciled:** 0011 (micro pods, immutable), 0012 (ephemeral voice calls), 0013 (atomic strict rebuild + production TURN startup guard), 0014 (idempotent third places seed across Katowice, Gliwice, Chorzów), 0015 (privacy-preserving conversion funnel analytics).
-* **Integrity & Operational Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` untouched; H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
+* **Integrity & Operational Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` is not a clean seed (later found test-contaminated; see 2026-11-13 correction); H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
 
 **Git repository & packaging readiness (2026-10-15):** Initial Git commit `abf15ec4d0a947ccb72ce613ba936e7026eb95e8` created on branch `main` with author `Abishek <abivr0910@gmail.com>`. All application source files, Docker files, ops runbooks, test suites, and Android project files are tracked. `CODEX_WORK_DIRECTORY.md` is preserved and ignored. Working tree is clean (`nothing to commit, working tree clean`).
 * **Verified Baseline:** 12 ops pilot preflight tests passed (1.42s), all 9 diagnostic probes exit 0, frontend `oxlint` 0 errors / 0 warnings (190ms), `tsc -b && vite build` clean in 3.12s. Distinct test matrix reconciled at exactly 246 tests passed (172 + 12 + 16 + 4 + 42) + 9 diagnostic probes.
 * **AWS Status:** Founder waiting for AWS ~24-hour verification hold to clear. Once cleared, proceed with EC2 `t3.medium` launch in `eu-central-1` (Frankfurt), Elastic IP allocation, and DNS record setup per `ops/EC2_STAGING_RUNBOOK.md`.
 * **Restore Drill:** Rehearsal drill strictly targets scratch database `./ops/backups/restore_drill_NEW_UNIQUE_NAME.db`, never `/app/data/pilot_live.db`.
-* **Integrity & Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` untouched; H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
+* **Integrity & Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` is not a clean seed (later found test-contaminated; see 2026-11-13 correction); H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
 
 **Full baseline verification (2026-10-14, G0 complete — 246 distinct tests passed, 9 probes exit 0):** On the clean reviewed tree with feature 003 activity-first outings, quiet trip-tab activity cues, and unverified venue safety claim removals, the entire test surface was rerun and verified on fresh disposable databases and isolated harnesses (passing tests is contract evidence, not 100% code coverage):
 * **Backend + Disaster Recovery pytest:** **172 passed** in 38.40s (`backend/` + `ops/test_disaster_recovery.py`; includes the 13 adversarial review scenarios in `backend/test_private_pilot_review.py`).
@@ -27,7 +39,7 @@
 * **Full Development Playwright Suite:** **42 passed** in 1.3m across Desktop Chromium and Mobile Chrome (`qa/playwright.config.ts`), with `CARTMATE_MODERATOR_USER_IDS=usr_zuzanna` on dedicated disposable SQLite DB.
 * **Distinct Test Total:** **246 distinct automated tests passed** (172 + 12 + 16 + 4 + 42) + 9 diagnostic probes.
 * **WebSocket Query String & Ticket Clarification:** Long-lived session tokens strictly stay out of URLs (exchanged via POST `/api/auth/ws-ticket` in auth headers). Short-lived (30s) single-use tickets are placed in the WebSocket connection query string (`/ws?ticket=...`) by `socket.ts:86`. Uvicorn ticket redaction is active; reverse-proxy Caddy access logging must be verified on the deployed EC2 container.
-* **Integrity & Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` untouched; `CODEX_WORK_DIRECTORY.md` intact; H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
+* **Integrity & Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` is not a clean seed (later found test-contaminated; see 2026-11-13 correction); `CODEX_WORK_DIRECTORY.md` intact; H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
 
 **Activity-first engineering slice (2026-10-14):** [Feature 003](context/feature-specs/003-activity-first-outings.md) is implemented locally: walk, study, fitness, food and conversation join existing errands without changing age, block, region or SOS gates. New-category plans require a specific meeting point (text is not independently venue-verified); a no-expected-spend plan requires zero estimated cost. Legacy Jev venue suggestions no longer claim unverified "high safety" or CCTV. PL/EN/UK/RU discovery/creation and mutual follow-up copy are updated; Uvicorn WebSocket-ticket logs are redacted.
 

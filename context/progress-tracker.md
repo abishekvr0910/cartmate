@@ -1,4 +1,17 @@
-# Progress tracker — 2026-11-11
+# Progress tracker — 2026-11-13
+
+## Completed: test-isolation and voice hardening pass (2026-11-13)
+
+* **Backend & Ops Test Suite:** **250 passed, 0 failed** in 88.52s (`pytest -p no:cacheprovider -q` from root).
+* **Database isolation:** root and backend `conftest.py` force a disposable `CARTMATE_DATABASE_PATH`; `storage.py` refuses the default `backend/cartmate.db` under pytest. `backend/cartmate.db` stayed at SHA-256 `4C6E08033FFF4BD6C819452E86EE621EBCDCEB3ABAA5148FB8229C9405CC840D` during this run and is not a clean seed; `ops/pilot_live.db` remains absent.
+* **Staging TURN fail-closed:** `voice_manager.py` withholds TURN credentials for staging and production when the secret is missing or still the development default; regression coverage added for both.
+* **Isolated Staging Operator-Pilot Suite:** **16 passed, 0 failed** in 2.1m across Desktop Chromium and Mobile Chrome Pixel 7. The flaky plan-acceptance waits now target the real `/plan` and `/accept-plan` endpoints, and the restart harness uses the backend venv.
+* **Isolated Staging No-Demo Suite:** **4 passed, 0 failed** in 22.7s.
+* **Multi-User Pods & Voice E2E Suite:** **6 passed, 0 failed** in 31.7s.
+* **Diagnostic Security Probes:** **All 9 exit 0**.
+* **Frontend Lint & Build:** `oxlint` clean; `tsc -b && vite build` clean in 1.73s (`index-DG6J2OnH.js`, `PodFeed-BpQPY5vP.js`, `VoiceCallHUD-Btgmo5ce.js`); existing non-fatal large-chunk warning remains.
+* **Handy-derived voice UX:** 9-bar logarithmic visualizer, silence warning, Web Audio earcons, and a `setSinkId` output toggle are implemented; physical mobile output routing and browser support remain unverified.
+* **Integrity & Gates:** H-01..H-06, coturn runtime, EC2 deployment, domain-bound APK, and physical-handset rehearsal remain strictly **NOT RUN**.
 
 ## Completed: Full automated checklist re-execution & verification (2026-11-11)
 
@@ -9,7 +22,7 @@
 * **Multi-User Pods & Voice E2E Suite:** **6 passed, 0 failed** in 17.5s across Desktop Chromium and Mobile Chrome Pixel 7 (`qa/tests/pods-and-voice.spec.ts` via isolated runner `qa/run_pods_and_voice.py`).
 * **Frontend Lint & Build:** `oxlint` 0 errors / 0 warnings (202ms on 29 files); `tsc -b && vite build` clean in 2.49s (`dist/assets/index-CkFeURvF.js`). Lazy-loaded chunks verified (`PodFeed-D7QOTGiB.js` 29.65 kB, `VoiceCallHUD-CJ_P2hki.js` 36.12 kB).
 * **Migrations Completed & Reconciled:** 0011 (micro pods, immutable), 0012 (ephemeral voice calls), 0013 (atomic strict rebuild + production TURN startup guard), 0014 (idempotent third places seed across Katowice, Gliwice, Chorzów), 0015 (privacy-preserving conversion funnel analytics).
-* **Integrity & Operational Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` untouched; H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
+* **Integrity & Operational Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` is not a clean seed (later found test-contaminated; see 2026-11-13 correction); H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
 
 ## Completed: Git repository initialized & clean deployment packaging (2026-10-15)
 
@@ -17,7 +30,7 @@
 * **Verified Baseline:** 12 ops pilot preflight tests passed (1.42s), all 9 diagnostic probes exit 0, frontend `oxlint` 0 errors / 0 warnings (190ms), `tsc -b && vite build` clean in 3.12s. Distinct test matrix reconciled at exactly 246 tests passed (172 + 12 + 16 + 4 + 42) + 9 diagnostic probes.
 * **AWS Status:** Founder waiting for AWS ~24-hour verification hold to clear. Once cleared, proceed with EC2 `t3.medium` launch in `eu-central-1` (Frankfurt), Elastic IP allocation, and DNS record setup per `ops/EC2_STAGING_RUNBOOK.md`.
 * **Restore Drill:** Rehearsal drill strictly targets scratch database `./ops/backups/restore_drill_NEW_UNIQUE_NAME.db`, never `/app/data/pilot_live.db`.
-* **Integrity & Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` untouched; H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
+* **Integrity & Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` is not a clean seed (later found test-contaminated; see 2026-11-13 correction); H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
 
 ## Completed: G0 clean test baseline verified (2026-10-14)
 
@@ -31,7 +44,7 @@ Full test surface independently re-executed and verified across clean disposable
 * **Full Development Playwright Suite:** **42 passed** in 1.3m across Desktop Chromium and Mobile Chrome (`qa/playwright.config.ts`), with `CARTMATE_MODERATOR_USER_IDS=usr_zuzanna` on dedicated disposable SQLite DB.
 * **Distinct Test Total:** **246 distinct automated tests passed** (172 + 12 + 16 + 4 + 42) + 9 diagnostic probes. Passing tests is contract evidence, not 100% code coverage.
 * **WebSocket Query String & Ticket Clarification:** Long-lived session tokens strictly stay out of URLs. Short-lived (30s) single-use tickets are placed in the WebSocket connection query string (`/ws?ticket=...`) by `socket.ts:86`. Uvicorn ticket redaction is active; reverse-proxy Caddy access logging must be verified on the deployed EC2 container.
-* **Integrity & Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` untouched; `CODEX_WORK_DIRECTORY.md` intact; H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
+* **Integrity & Gates:** `ops/pilot_live.db` absent; `backend/cartmate.db` is not a clean seed (later found test-contaminated; see 2026-11-13 correction); `CODEX_WORK_DIRECTORY.md` intact; H-01..H-06 human and physical handset gates remain strictly **NOT RUN**.
 
 ## Completed local engineering: activity-first outings (2026-10-14)
 
