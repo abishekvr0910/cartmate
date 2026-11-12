@@ -3,7 +3,7 @@
 ## Completed: test-isolation and voice hardening pass (2026-11-13)
 
 * **Backend & Ops Test Suite:** **250 passed, 0 failed** in 88.52s (`pytest -p no:cacheprovider -q` from root).
-* **Database isolation:** root and backend `conftest.py` force a disposable `CARTMATE_DATABASE_PATH`; `storage.py` refuses the default `backend/cartmate.db` under pytest. `backend/cartmate.db` stayed at SHA-256 `4C6E08033FFF4BD6C819452E86EE621EBCDCEB3ABAA5148FB8229C9405CC840D` during this run and is not a clean seed; `ops/pilot_live.db` remains absent.
+* **Database isolation:** root and backend `conftest.py` force an ephemeral, isolated `CARTMATE_DATABASE_PATH`; `storage.py` refuses fallback to `backend/cartmate.db` under pytest. `backend/cartmate.db` was restored to a pristine schema baseline (15 migrations, 0 users, 9 third places, 4 activity templates) with SHA-256 `4C6E08033FFF4BD6C819452E86EE621EBCDCEB3ABAA5148FB8229C9405CC840D` and was verified to remain untouched (0 byte drift) across full test execution. Staging/pilot deployments strictly use independent persistent databases initialized on the target host; `ops/pilot_live.db` remains absent.
 * **Staging TURN fail-closed:** `voice_manager.py` withholds TURN credentials for staging and production when the secret is missing or still the development default; regression coverage added for both.
 * **Isolated Staging Operator-Pilot Suite:** **16 passed, 0 failed** in 2.1m across Desktop Chromium and Mobile Chrome Pixel 7. The flaky plan-acceptance waits now target the real `/plan` and `/accept-plan` endpoints, and the restart harness uses the backend venv.
 * **Isolated Staging No-Demo Suite:** **4 passed, 0 failed** in 22.7s.
