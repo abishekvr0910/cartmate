@@ -321,16 +321,17 @@ def test_voice_disconnect_grace_and_turn_secret_and_compile(clean_db, monkeypatc
     py_compile.compile(os.path.join(backend_dir, "migrations", "m0011_micro_pods.py"), doraise=True)
     py_compile.compile(os.path.join(backend_dir, "migrations", "m0013_voice_calls_strict_rebuild.py"), doraise=True)
 
-    # Production TURN secret fail-closed check
-    monkeypatch.setenv("CARTMATE_ENV", "production")
-    monkeypatch.setenv("CARTMATE_TURN_SECRET", "cartmate_ephemeral_turn_secret_dev")
-    ice_prod_default = voice_call_manager.get_ice_servers("usr_zuzanna")
-    assert all("turn:" not in str(s.get("urls")) for s in ice_prod_default)
+    # Staging and Production TURN secret fail-closed check
+    for env_name in ("staging", "production"):
+        monkeypatch.setenv("CARTMATE_ENV", env_name)
+        monkeypatch.setenv("CARTMATE_TURN_SECRET", "cartmate_ephemeral_turn_secret_dev")
+        ice_default = voice_call_manager.get_ice_servers("usr_zuzanna")
+        assert all("turn:" not in str(s.get("urls")) for s in ice_default), f"Expected no turn urls in {env_name} with default secret"
 
-    monkeypatch.setenv("CARTMATE_TURN_SECRET", "strong-unique-production-turn-secret-999")
-    ice_prod_custom = voice_call_manager.get_ice_servers("usr_zuzanna")
-    assert any("turn:" in str(s.get("urls")) for s in ice_prod_custom)
-    assert all("turns:" not in str(s.get("urls")) for s in ice_prod_custom)
+        monkeypatch.setenv("CARTMATE_TURN_SECRET", f"strong-unique-{env_name}-turn-secret-999")
+        ice_custom = voice_call_manager.get_ice_servers("usr_zuzanna")
+        assert any("turn:" in str(s.get("urls")) for s in ice_custom), f"Expected turn urls in {env_name} with custom secret"
+        assert all("turns:" not in str(s.get("urls")) for s in ice_custom)
     monkeypatch.setenv("CARTMATE_ENV", "development")
 
     async def _test_grace():

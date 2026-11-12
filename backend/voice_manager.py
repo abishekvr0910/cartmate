@@ -75,8 +75,8 @@ class VoiceCallManager:
             {"urls": "stun:stun.l.google.com:19302"},
             {"urls": "stun:stun1.l.google.com:19302"},
         ]
-        if os.getenv("CARTMATE_ENV") == "production" and (not turn_secret or turn_secret == DEFAULT_DEV_TURN_SECRET):
-            logger.warning("Production TURN secret is unconfigured or set to dev default; withholding TURN credentials.")
+        if os.getenv("CARTMATE_ENV") in {"staging", "production"} and (not turn_secret or turn_secret == DEFAULT_DEV_TURN_SECRET):
+            logger.warning("Staging/production TURN secret is unconfigured or set to dev default; withholding TURN credentials.")
             return stun_servers
 
         # Ephemeral timestamp-based credentials (valid for 15 minutes)

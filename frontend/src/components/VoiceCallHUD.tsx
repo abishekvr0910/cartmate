@@ -358,6 +358,52 @@ const VOICE_COPY: Record<
   },
 };
 
+/** Handy-inspired pure Web Audio feedback earcons (zero asset downloads) */
+function playAudioCue(type: 'connect' | 'disconnect' | 'mute' | 'unmute') {
+  try {
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const now = ctx.currentTime;
+
+    if (type === 'connect') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, now);
+      osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.12);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.12, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    } else if (type === 'disconnect') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(659.25, now);
+      osc.frequency.exponentialRampToValueAtTime(440, now + 0.15);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.1, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+      osc.start(now);
+      osc.stop(now + 0.32);
+    } else if (type === 'mute' || type === 'unmute') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(type === 'mute' ? 320 : 640, now);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.06, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+      osc.start(now);
+      osc.stop(now + 0.09);
+    }
+  } catch {
+    // Gracefully ignore audio context errors if policy blocks autoplay
+  }
+}
+
 export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: _currentUser, lang = 'pl' }) => {
   const milestones = VOICE_MILESTONES[lang] || VOICE_MILESTONES.pl;
   const vcopy = VOICE_COPY[lang] || VOICE_COPY.pl;
@@ -605,6 +651,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
   // Terminate & Transition to Rating
   const handleCallEnded = useCallback(
     (_reason?: string) => {
+      playAudioCue('disconnect');
       cleanupMedia();
       setCallState('ended');
       setActiveCallId((currentId) => {
@@ -666,6 +713,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
         pc.onconnectionstatechange = () => {
           if (callSessionRef.current !== sessionId) return;
           if (pc.connectionState === 'connected') {
+            playAudioCue('connect');
             setCallState('in_call');
             setSecondsRemaining(600);
             if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
@@ -847,7 +895,9 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
       tracks.forEach((track) => {
         track.enabled = !track.enabled;
       });
-      setIsMuted(!tracks[0]?.enabled);
+      const newMuted = !tracks[0]?.enabled;
+      setIsMuted(newMuted);
+      playAudioCue(newMuted ? 'mute' : 'unmute');
     }
   };
 
