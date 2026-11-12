@@ -1,3 +1,19 @@
+import os
+import tempfile
+import atexit
+import shutil
+
+# Guarantee test database isolation: pytest must NEVER touch backend/cartmate.db
+if "CARTMATE_DATABASE_PATH" not in os.environ:
+    _test_db_dir = tempfile.mkdtemp(prefix="cartmate_pytest_backend_")
+    _test_db_path = os.path.join(_test_db_dir, "test_cartmate.db")
+    os.environ["CARTMATE_DATABASE_PATH"] = _test_db_path
+
+    def _cleanup_test_db():
+        shutil.rmtree(_test_db_dir, ignore_errors=True)
+
+    atexit.register(_cleanup_test_db)
+
 import pytest
 from rate_limiter import rate_limiter
 import database

@@ -25,7 +25,10 @@ function captureRealtimeFrames(page: Page): WsFrame[] {
 }
 
 const startHarness = (dbPath: string, port = 8018): ChildProcess => {
-  const pythonBin = process.platform === 'win32' ? 'python' : 'python3';
+  const venvWin = path.resolve(__dirname, '..', '..', 'backend', '.venv', 'Scripts', 'python.exe');
+  const venvPosix = path.resolve(__dirname, '..', '..', 'backend', '.venv', 'bin', 'python');
+  const pythonBin = process.env.PYTHON
+    || (fs.existsSync(venvWin) ? venvWin : fs.existsSync(venvPosix) ? venvPosix : process.platform === 'win32' ? 'python' : 'python3');
   return spawn(pythonBin, [path.resolve(__dirname, '..', 'operator_pilot_harness.py')], {
     cwd: path.resolve(__dirname, '..'),
     env: {
@@ -61,7 +64,7 @@ const stopHarness = async (proc: ChildProcess) => {
   }
 };
 
-const waitForHarness = async (port = 8018, maxMs = 15000) => {
+const waitForHarness = async (port = 8018, maxMs = 30000) => {
   const start = Date.now();
   while (Date.now() - start < maxMs) {
     try {
@@ -283,12 +286,18 @@ test.describe('Staging Operator-Admitted Friend Pilot Journey', () => {
     const policySelect = hostPage.locator('form label select');
     await expect(policySelect).toBeVisible({ timeout: 5000 });
     await policySelect.selectOption('split_strictly_50_50');
-    await hostPage.getByRole('button', { name: /Zapisz plan i poproś o akceptację/i }).click();
+    await Promise.all([
+      hostPage.waitForResponse(resp => resp.url().includes('/api/trips/') && resp.request().method() === 'PUT'),
+      hostPage.getByRole('button', { name: /Zapisz plan i poproś o akceptację/i }).click(),
+    ]);
 
+    // Host accepts plan
     const hostAcceptPlanBtn = hostPage.getByRole('button', { name: /Akceptuję warunki spotkania/i });
     await expect(hostAcceptPlanBtn).toBeVisible({ timeout: 5000 });
     await hostAcceptPlanBtn.click();
 
+    // Ensure companion has received the updated plan before accepting
+    await expect(companionPage.getByText(/Dziś o 18:00 przy kasach/i)).toBeVisible({ timeout: 10000 });
     const compAcceptPlanBtn = companionPage.getByRole('button', { name: /Akceptuję warunki spotkania/i });
     await expect(compAcceptPlanBtn).toBeVisible({ timeout: 5000 });
     await compAcceptPlanBtn.click();
@@ -631,12 +640,18 @@ test.describe('Staging Operator-Admitted Friend Pilot Journey', () => {
     const whenInput = hostPage.locator('input[placeholder*="27.09"]');
     await expect(whenInput).toBeVisible({ timeout: 5000 });
     await whenInput.fill('Dziś o 19:00 przy wejściu');
-    await hostPage.getByRole('button', { name: /Zapisz plan i poproś o akceptację/i }).click();
+    await Promise.all([
+      hostPage.waitForResponse(resp => resp.url().includes('/api/trips/') && resp.request().method() === 'PUT'),
+      hostPage.getByRole('button', { name: /Zapisz plan i poproś o akceptację/i }).click(),
+    ]);
 
     // Both accept plan
     const hostAcceptPlanBtn = hostPage.getByRole('button', { name: /Akceptuję warunki spotkania/i });
     await expect(hostAcceptPlanBtn).toBeVisible({ timeout: 5000 });
     await hostAcceptPlanBtn.click();
+
+    // Ensure companion has received the updated plan before accepting
+    await expect(compPage.getByText(/Dziś o 19:00 przy wejściu/i)).toBeVisible({ timeout: 10000 });
     const compAcceptPlanBtn = compPage.getByRole('button', { name: /Akceptuję warunki spotkania/i });
     await expect(compAcceptPlanBtn).toBeVisible({ timeout: 5000 });
     await compAcceptPlanBtn.click();

@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import sys
+import tempfile
 import sqlite3
 import hashlib
 import hmac
@@ -13,7 +15,15 @@ from config import OPERATIONAL_THRESHOLDS
 logger = logging.getLogger("cartmate.storage")
 
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), "cartmate.db")
-DATABASE_PATH = os.getenv("CARTMATE_DATABASE_PATH", DEFAULT_DB_PATH)
+if "CARTMATE_DATABASE_PATH" in os.environ:
+    DATABASE_PATH = os.environ["CARTMATE_DATABASE_PATH"]
+elif "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+    # Safety guard: under pytest, never fall back to DEFAULT_DB_PATH (cartmate.db)
+    _test_tmp = os.path.join(tempfile.gettempdir(), f"cartmate_pytest_{os.getpid()}.db")
+    DATABASE_PATH = _test_tmp
+    os.environ["CARTMATE_DATABASE_PATH"] = _test_tmp
+else:
+    DATABASE_PATH = DEFAULT_DB_PATH
 
 ANALYTICS_SENSITIVE_KEYS = frozenset({
     "phone",

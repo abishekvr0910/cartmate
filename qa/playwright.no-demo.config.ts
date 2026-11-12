@@ -1,6 +1,12 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = 'http://127.0.0.1:8008';
+
+const venvWin = path.resolve(__dirname, '../backend/.venv/Scripts/python.exe');
+const venvPosix = path.resolve(__dirname, '../backend/.venv/bin/python');
+const pythonBin = process.env.PYTHON || (process.platform === 'win32' && fs.existsSync(venvWin) ? `"${venvWin}"` : (fs.existsSync(venvPosix) ? `"${venvPosix}"` : 'python'));
 
 export default defineConfig({
   testDir: './tests',
@@ -17,7 +23,7 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   webServer: {
-    command: 'python staging_harness.py',
+    command: `${pythonBin} staging_harness.py`,
     port: 8008,
     reuseExistingServer: false,
     timeout: 15000,
