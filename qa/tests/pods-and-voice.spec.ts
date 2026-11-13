@@ -186,6 +186,19 @@ test.describe('Micro-Pods Quorum & Ephemeral Voice Journeys', () => {
     await expect(pageA.locator(`text=/${userB.name}|Łączenie rozmówcy|Connecting/i`).first()).toBeVisible({ timeout: 10000 });
     await expect(pageB.locator(`text=/${userA.name}|Łączenie rozmówcy|Connecting/i`).first()).toBeVisible({ timeout: 10000 });
 
+    // Test in-call audio controls: Mute toggle & Speakerphone switcher (Handy voice patterns)
+    const muteBtnA = pageA.locator('button[title*="wycisz"], button[title*="Mute"]').first();
+    if (await muteBtnA.isVisible()) {
+      await muteBtnA.click();
+      const unmuteBtnA = pageA.locator('button[title*="wycisz"], button[title*="Unmute"]').first();
+      await expect(unmuteBtnA).toBeVisible({ timeout: 3000 });
+      await unmuteBtnA.click();
+    }
+    const speakerBtnA = pageA.locator('button[title*="Głośnik"], button[title*="Speaker"]').first();
+    if (await speakerBtnA.isVisible()) {
+      await speakerBtnA.click();
+    }
+
     // Context A clicks hangup ("Koniec" / "Zakończ rozmowę")
     const hangupBtnA = pageA.getByRole('button', { name: /Koniec|End/i }).first();
     await expect(hangupBtnA).toBeVisible({ timeout: 5000 });
