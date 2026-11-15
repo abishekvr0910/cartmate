@@ -1,5 +1,7 @@
 # Scope: CartMate
 
+For the next Claude implementation pass, see [friends pilot hardening and later release gates](claude-hardening.md). It extends this scope with features 14 through 25 and treats new audit findings as claims to verify.
+
 CartMate brings adults together in real life through structured micro pods of three to five people anchored at verified public third places, alongside quick ten minute remote voice calls from home to cut loneliness with no social awkwardness.
 
 **Build approach:** Tracer Bullet (thin end to end thread connecting database triggers, REST endpoints, real time websockets, and a clean mobile feed).
