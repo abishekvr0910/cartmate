@@ -403,6 +403,11 @@ MIGRATIONS: List[Tuple[int, str, str]] = [
         "pilot_funnel_analytics",
         open(os.path.join(os.path.dirname(__file__), "migrations", "0015_pilot_funnel_analytics.sql"), "r", encoding="utf-8").read(),
     ),
+    (
+        16,
+        "unverify_seeded_third_places",
+        open(os.path.join(os.path.dirname(__file__), "migrations", "0016_unverify_seeded_third_places.sql"), "r", encoding="utf-8").read(),
+    ),
 ]
 
 
@@ -1883,12 +1888,16 @@ class DurableStorage:
         finally:
             conn.close()
 
-    def get_third_places(self, city: Optional[str] = None) -> List[dict]:
+    def get_third_places(self, city: Optional[str] = None, verified_only: bool = False) -> List[dict]:
+        """Lists active Third Places. `verified_only` keeps only places checked in person,
+        which are the only ones a pod can be scheduled at."""
         conn = get_db_connection(self.db_path)
         try:
             cursor = conn.cursor()
             query = "SELECT * FROM third_places WHERE is_active = 1"
             params: list = []
+            if verified_only:
+                query += " AND verified_at IS NOT NULL"
             if city:
                 query += " AND city = ?"
                 params.append(city)

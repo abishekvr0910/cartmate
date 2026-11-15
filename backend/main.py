@@ -3664,7 +3664,7 @@ def list_third_places(
 ):
     """Returns verified public Third Places, optionally filtered by city."""
     assert_discovery_authenticated(current_user)
-    return storage.get_third_places(city=city)
+    return storage.get_third_places(city=city, verified_only=True)
 
 
 @app.post("/api/pods/places")

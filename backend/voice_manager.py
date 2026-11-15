@@ -22,17 +22,33 @@ DEFAULT_DEV_TURN_SECRET = "cartmate_ephemeral_turn_secret_dev"
 DEFAULT_DISCONNECT_GRACE_SECONDS = 12.0
 
 
+_voice_window_timezone_failure_logged = False
+
+
 def is_voice_window_open() -> bool:
-    """Returns True if the voice call window is open (18:00 - 23:00 Warsaw time in production)."""
+    """Returns True if the voice call window is open (18:00 - 23:00 Warsaw time).
+
+    The window is enforced in production, or anywhere CARTMATE_VOICE_WINDOW_ENFORCED is set.
+    When enforced it fails closed: if Warsaw local time cannot be resolved (for example the
+    IANA timezone database is missing on the host), the window is reported closed.
+    """
+    global _voice_window_timezone_failure_logged
     enforce = os.getenv("CARTMATE_VOICE_WINDOW_ENFORCED", "").lower() in ("1", "true") or os.getenv("CARTMATE_ENV") == "production"
     if not enforce:
         return True
     try:
         from zoneinfo import ZoneInfo
         warsaw_hour = datetime.now(ZoneInfo("Europe/Warsaw")).hour
-        return 18 <= warsaw_hour < 23
-    except Exception:
-        return True
+    except Exception as exc:
+        if not _voice_window_timezone_failure_logged:
+            _voice_window_timezone_failure_logged = True
+            logger.error(
+                "Voice window is enforced but Europe/Warsaw time is unavailable (%s); "
+                "voice calls stay closed until timezone data is installed.",
+                type(exc).__name__,
+            )
+        return False
+    return 18 <= warsaw_hour < 23
 
 @dataclass
 class QueueEntry:
