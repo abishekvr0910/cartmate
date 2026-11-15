@@ -486,6 +486,14 @@ export interface VoiceCallPeer {
   city: string;
 }
 
+export type VoiceWindowState = 'unrestricted' | 'open' | 'closed' | 'unavailable';
+
+export interface VoiceWindowHours {
+  start: string;
+  end: string;
+  timezone: string;
+}
+
 export interface VoiceStatusResponse {
   user_id: string;
   daily_calls_used: number;
@@ -501,7 +509,12 @@ export interface VoiceStatusResponse {
     started_at?: string | null;
   } | null;
   window_open: boolean;
-  window_schedule: string;
+  /** Effective voice-hours policy. Absent only on servers older than this field. */
+  window_state?: VoiceWindowState;
+  window_enforced?: boolean;
+  /** Present only while a window is enforced; null when calls are unrestricted. */
+  window_hours?: VoiceWindowHours | null;
+  window_schedule?: string | null;
   icebreakers: string[];
   ice_servers: RTCIceServer[];
 }

@@ -13,7 +13,7 @@ import {
   CheckCircle2,
   Lock,
 } from 'lucide-react';
-import type { User, VoiceStatusResponse, VoiceCallPeer } from '../types';
+import type { User, VoiceStatusResponse, VoiceCallPeer, VoiceWindowState } from '../types';
 import type { Language } from '../locales';
 import { fetchVoiceStatus, rateVoiceCall, hangupVoiceCall, trackEvent } from '../api';
 import { realtime } from '../realtime/socket';
@@ -42,8 +42,12 @@ const VOICE_COPY: Record<
     searchingTitle: string;
     cancelSearch: string;
     windowStatus: string;
-    windowOpen: string;
-    windowClosed: string;
+    windowUnrestricted: string;
+    windowOpen: (hours: string) => string;
+    windowClosed: (hours: string) => string;
+    windowUnavailable: string;
+    windowChecking: string;
+    moderationNote: string;
     connectNow: string;
     rateTitle: string;
     rateThanks: string;
@@ -79,7 +83,8 @@ const VOICE_COPY: Record<
     defaultTopic1: string;
     defaultTopic2: string;
     defaultTopic3: string;
-    windowClosedButton: string;
+    windowClosedButton: (hours: string) => string;
+    windowUnavailableButton: string;
     dailyLimitReached: string;
     ratingHelps: string;
     ratingAnonymous: string;
@@ -106,8 +111,12 @@ const VOICE_COPY: Record<
     searchingTitle: 'Szukamy rozmówcy...',
     cancelSearch: 'Anuluj wyszukiwanie',
     windowStatus: 'Status okna rozmów',
-    windowOpen: 'Otwarte (18:00 - 23:00)',
-    windowClosed: 'Zamknięte (18:00 - 23:00)',
+    windowUnrestricted: 'Otwarte całą dobę',
+    windowOpen: (hours) => `Otwarte (${hours})`,
+    windowClosed: (hours) => `Zamknięte (${hours})`,
+    windowUnavailable: 'Chwilowo niedostępne',
+    windowChecking: 'Sprawdzanie…',
+    moderationNote: 'Nikt nie słucha rozmów na żywo. Moderator sprawdza zgłoszenia po fakcie. W nagłym wypadku dzwoń pod 112.',
     connectNow: 'Połącz z kimś teraz (10 min)',
     rateTitle: 'Jak przebiegła rozmowa?',
     rateThanks: 'Dziękujemy za ocenę!',
@@ -144,7 +153,8 @@ const VOICE_COPY: Record<
     defaultTopic1: 'Jak minął Ci dzisiejszy dzień?',
     defaultTopic2: 'Twój ulubiony sprawdzony przepis na obiad?',
     defaultTopic3: 'Ciekawy film, serial lub książka warta polecenia?',
-    windowClosedButton: 'Okno rozmów zamknięte (18:00 - 23:00)',
+    windowClosedButton: (hours) => `Okno rozmów zamknięte (${hours})`,
+    windowUnavailableButton: 'Rozmowy chwilowo niedostępne',
     dailyLimitReached: 'Osiągnięto limit dzienny (3/3)',
     ratingHelps: 'Pomagasz utrzymać życzliwą społeczność.',
     ratingAnonymous: 'Twoja opinia jest w 100% anonimowa.',
@@ -170,8 +180,12 @@ const VOICE_COPY: Record<
     searchingTitle: 'Searching for a caller...',
     cancelSearch: 'Cancel search',
     windowStatus: 'Call window status',
-    windowOpen: 'Open (18:00 - 23:00)',
-    windowClosed: 'Closed (18:00 - 23:00)',
+    windowUnrestricted: 'Open all day',
+    windowOpen: (hours) => `Open (${hours})`,
+    windowClosed: (hours) => `Closed (${hours})`,
+    windowUnavailable: 'Temporarily unavailable',
+    windowChecking: 'Checking…',
+    moderationNote: 'Nobody listens to calls live. A moderator reviews reports afterwards. In an emergency call 112.',
     connectNow: 'Connect now (10 min)',
     rateTitle: 'How was the call?',
     rateThanks: 'Thank you for rating!',
@@ -208,7 +222,8 @@ const VOICE_COPY: Record<
     defaultTopic1: 'How was your day today?',
     defaultTopic2: 'Your favorite tried-and-true dinner recipe?',
     defaultTopic3: 'An interesting film, series, or book worth recommending?',
-    windowClosedButton: 'Call window closed (18:00 - 23:00)',
+    windowClosedButton: (hours) => `Call window closed (${hours})`,
+    windowUnavailableButton: 'Calls temporarily unavailable',
     dailyLimitReached: 'Daily limit reached (3/3)',
     ratingHelps: 'You help keep the community kind.',
     ratingAnonymous: 'Your feedback is 100% anonymous.',
@@ -234,8 +249,12 @@ const VOICE_COPY: Record<
     searchingTitle: 'Шукаємо співрозмовника...',
     cancelSearch: 'Скасувати пошук',
     windowStatus: 'Статус вікна розмов',
-    windowOpen: 'Відкрито (18:00 - 23:00)',
-    windowClosed: 'Закрито (18:00 - 23:00)',
+    windowUnrestricted: 'Відкрито цілодобово',
+    windowOpen: (hours) => `Відкрито (${hours})`,
+    windowClosed: (hours) => `Закрито (${hours})`,
+    windowUnavailable: 'Тимчасово недоступно',
+    windowChecking: 'Перевірка…',
+    moderationNote: 'Ніхто не слухає розмови наживо. Модератор розглядає скарги пізніше. У надзвичайній ситуації телефонуйте 112.',
     connectNow: 'З’єднатися зараз (10 хв)',
     rateTitle: 'Як пройшла розмова?',
     rateThanks: 'Дякуємо за оцінку!',
@@ -272,7 +291,8 @@ const VOICE_COPY: Record<
     defaultTopic1: 'Як минув ваш день?',
     defaultTopic2: 'Ваш улюблений перевірений рецепт вечері?',
     defaultTopic3: 'Цікавий фільм, серіал або книга, варті рекомендації?',
-    windowClosedButton: 'Вікно розмов зачинено (18:00 - 23:00)',
+    windowClosedButton: (hours) => `Вікно розмов зачинено (${hours})`,
+    windowUnavailableButton: 'Розмови тимчасово недоступні',
     dailyLimitReached: 'Досягнуто денного ліміту (3/3)',
     ratingHelps: 'Ви допомагаєте підтримувати доброзичливу спільноту.',
     ratingAnonymous: 'Ваш відгук на 100% анонімний.',
@@ -298,8 +318,12 @@ const VOICE_COPY: Record<
     searchingTitle: 'Ищем собеседника...',
     cancelSearch: 'Отменить поиск',
     windowStatus: 'Статус окна звонков',
-    windowOpen: 'Открыто (18:00 - 23:00)',
-    windowClosed: 'Закрыто (18:00 - 23:00)',
+    windowUnrestricted: 'Открыто круглосуточно',
+    windowOpen: (hours) => `Открыто (${hours})`,
+    windowClosed: (hours) => `Закрыто (${hours})`,
+    windowUnavailable: 'Временно недоступно',
+    windowChecking: 'Проверка…',
+    moderationNote: 'Никто не слушает разговоры в реальном времени. Модератор рассматривает жалобы позже. В экстренной ситуации звоните 112.',
     connectNow: 'Соединиться сейчас (10 мин)',
     rateTitle: 'Как прошёл разговор?',
     rateThanks: 'Спасибо за оценку!',
@@ -336,7 +360,8 @@ const VOICE_COPY: Record<
     defaultTopic1: 'Как прошёл ваш день?',
     defaultTopic2: 'Ваш любимый проверенный рецепт ужина?',
     defaultTopic3: 'Интересный фильм, сериал или книга, достойные рекомендации?',
-    windowClosedButton: 'Окно звонков закрыто (18:00 - 23:00)',
+    windowClosedButton: (hours) => `Окно звонков закрыто (${hours})`,
+    windowUnavailableButton: 'Звонки временно недоступны',
     dailyLimitReached: 'Достигнут дневной лимит (3/3)',
     ratingHelps: 'Вы помогаете поддерживать доброжелательное сообщество.',
     ratingAnonymous: 'Ваш отзыв на 100% анонимный.',
@@ -410,6 +435,41 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
   const [statusData, setStatusData] = useState<VoiceStatusResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // The server decides the voice-hours policy; nothing about hours is assumed here.
+  // Older servers only send window_open, which maps onto the enforced open/closed states.
+  // Until a status has loaded the state is 'checking'; if loading failed it is 'unavailable'.
+  const windowState: VoiceWindowState | 'checking' = statusData
+    ? statusData.window_state ?? (statusData.window_open ? 'open' : 'closed')
+    : loading
+    ? 'checking'
+    : 'unavailable';
+  const windowHours = statusData?.window_hours
+    ? `${statusData.window_hours.start} - ${statusData.window_hours.end}`
+    : '18:00 - 23:00';
+  // Calls may start only when the server has said so: never while the policy is unknown.
+  const isWindowBlockingCalls = windowState !== 'unrestricted' && windowState !== 'open';
+  const windowLabel =
+    windowState === 'unrestricted'
+      ? vcopy.windowUnrestricted
+      : windowState === 'open'
+      ? vcopy.windowOpen(windowHours)
+      : windowState === 'closed'
+      ? vcopy.windowClosed(windowHours)
+      : windowState === 'unavailable'
+      ? vcopy.windowUnavailable
+      : vcopy.windowChecking;
+  const windowBadgeClass =
+    windowState === 'unrestricted' || windowState === 'open'
+      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+      : windowState === 'checking'
+      ? 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+      : 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+  const windowDotClass =
+    windowState === 'unrestricted' || windowState === 'open'
+      ? 'bg-emerald-400 animate-pulse'
+      : windowState === 'checking'
+      ? 'bg-slate-400'
+      : 'bg-amber-400';
 
   const [callState, setCallState] = useState<CallState>('idle');
   const [selectedTopic, setSelectedTopic] = useState<string>(vcopy.defaultTopic1);
@@ -1248,17 +1308,14 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
           <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-semibold text-slate-400">{vcopy.windowStatus}</span>
-              {statusData?.window_open ? (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  {vcopy.windowOpen}
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                  {vcopy.windowClosed}
-                </span>
-              )}
+              <span
+                data-testid="voice-window-state"
+                data-state={windowState}
+                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${windowBadgeClass}`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${windowDotClass}`} />
+                {windowLabel}
+              </span>
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-800/60">
@@ -1279,6 +1336,9 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
                 </span>
               </div>
             </div>
+            <p data-testid="voice-moderation-note" className="mt-3 text-[11px] leading-snug text-slate-500">
+              {vcopy.moderationNote}
+            </p>
           </div>
 
           {/* Privacy & Safe Rules Card */}
@@ -1326,7 +1386,7 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
             <button
               onClick={handleJoinQueue}
               disabled={
-                Boolean(statusData && !statusData.window_open) ||
+                isWindowBlockingCalls ||
                 Boolean(statusData?.cooldown_remaining_seconds && statusData.cooldown_remaining_seconds > 0) ||
                 Boolean(statusData?.daily_calls_used && statusData.daily_calls_used >= 3)
               }
@@ -1336,8 +1396,12 @@ export const VoiceCallHUD: React.FC<VoiceCallHUDProps> = ({ token, currentUser: 
               <span>
                 {statusData?.cooldown_remaining_seconds && statusData.cooldown_remaining_seconds > 0
                   ? vcopy.cooldownButton(statusData.cooldown_remaining_seconds)
-                  : statusData && !statusData.window_open
-                  ? vcopy.windowClosedButton
+                  : windowState === 'unavailable'
+                  ? vcopy.windowUnavailableButton
+                  : windowState === 'closed'
+                  ? vcopy.windowClosedButton(windowHours)
+                  : windowState === 'checking'
+                  ? vcopy.windowChecking
                   : statusData?.daily_calls_used && statusData.daily_calls_used >= 3
                   ? vcopy.dailyLimitReached
                   : vcopy.connectNow}

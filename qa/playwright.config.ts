@@ -16,7 +16,8 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL,
-    trace: 'on-first-retry',
+    // Retries are 0, so 'on-first-retry' never recorded anything. Keep the trace of every failure.
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     launchOptions: {

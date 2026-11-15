@@ -22,23 +22,38 @@ DEFAULT_DEV_TURN_SECRET = "cartmate_ephemeral_turn_secret_dev"
 DEFAULT_DISCONNECT_GRACE_SECONDS = 12.0
 
 
+VOICE_WINDOW_TIMEZONE = "Europe/Warsaw"
+VOICE_WINDOW_START_HOUR = 18
+VOICE_WINDOW_END_HOUR = 23
+
+VOICE_WINDOW_UNRESTRICTED = "unrestricted"  # no window is enforced; calls are allowed at any hour
+VOICE_WINDOW_OPEN = "open"                  # enforced, and the current Warsaw time is inside the window
+VOICE_WINDOW_CLOSED = "closed"              # enforced, and the current Warsaw time is outside the window
+VOICE_WINDOW_UNAVAILABLE = "unavailable"    # enforced, but Warsaw time cannot be resolved: calls stay closed
+
 _voice_window_timezone_failure_logged = False
 
 
-def is_voice_window_open() -> bool:
-    """Returns True if the voice call window is open (18:00 - 23:00 Warsaw time).
+def is_voice_window_enforced() -> bool:
+    """The window is enforced in production, or anywhere CARTMATE_VOICE_WINDOW_ENFORCED is set."""
+    return (
+        os.getenv("CARTMATE_VOICE_WINDOW_ENFORCED", "").lower() in ("1", "true")
+        or os.getenv("CARTMATE_ENV") == "production"
+    )
 
-    The window is enforced in production, or anywhere CARTMATE_VOICE_WINDOW_ENFORCED is set.
-    When enforced it fails closed: if Warsaw local time cannot be resolved (for example the
-    IANA timezone database is missing on the host), the window is reported closed.
+
+def get_voice_window_state() -> str:
+    """Returns the voice-hours policy in force right now, as one of the VOICE_WINDOW_* states.
+
+    When the window is enforced it fails closed: if Warsaw local time cannot be resolved (for
+    example the IANA timezone database is missing on the host), the state is `unavailable`.
     """
     global _voice_window_timezone_failure_logged
-    enforce = os.getenv("CARTMATE_VOICE_WINDOW_ENFORCED", "").lower() in ("1", "true") or os.getenv("CARTMATE_ENV") == "production"
-    if not enforce:
-        return True
+    if not is_voice_window_enforced():
+        return VOICE_WINDOW_UNRESTRICTED
     try:
         from zoneinfo import ZoneInfo
-        warsaw_hour = datetime.now(ZoneInfo("Europe/Warsaw")).hour
+        warsaw_hour = datetime.now(ZoneInfo(VOICE_WINDOW_TIMEZONE)).hour
     except Exception as exc:
         if not _voice_window_timezone_failure_logged:
             _voice_window_timezone_failure_logged = True
@@ -47,8 +62,45 @@ def is_voice_window_open() -> bool:
                 "voice calls stay closed until timezone data is installed.",
                 type(exc).__name__,
             )
-        return False
-    return 18 <= warsaw_hour < 23
+        return VOICE_WINDOW_UNAVAILABLE
+    if VOICE_WINDOW_START_HOUR <= warsaw_hour < VOICE_WINDOW_END_HOUR:
+        return VOICE_WINDOW_OPEN
+    return VOICE_WINDOW_CLOSED
+
+
+def is_voice_window_open() -> bool:
+    """Returns True when calls may start: no window is enforced, or the enforced window is open."""
+    return get_voice_window_state() in (VOICE_WINDOW_UNRESTRICTED, VOICE_WINDOW_OPEN)
+
+
+def describe_voice_window() -> dict:
+    """The voice-hours policy as the status endpoint reports it to clients.
+
+    `window_hours` and `window_schedule` are present only when a window is enforced, so a host
+    without one (staging) never advertises evening hours it does not apply. Nothing here says
+    anything about moderator availability.
+    """
+    state = get_voice_window_state()
+    enforced = state != VOICE_WINDOW_UNRESTRICTED
+    start = f"{VOICE_WINDOW_START_HOUR:02d}:00"
+    end = f"{VOICE_WINDOW_END_HOUR:02d}:00"
+    return {
+        "window_state": state,
+        "window_open": state in (VOICE_WINDOW_UNRESTRICTED, VOICE_WINDOW_OPEN),
+        "window_enforced": enforced,
+        "window_hours": {"start": start, "end": end, "timezone": VOICE_WINDOW_TIMEZONE} if enforced else None,
+        "window_schedule": f"Codziennie {start} - {end}" if enforced else None,
+    }
+
+def voice_window_refusal_message() -> str:
+    """What a caller is told when the enforced window refuses a call."""
+    if get_voice_window_state() == VOICE_WINDOW_UNAVAILABLE:
+        return "Rozmowy głosowe są chwilowo niedostępne."
+    return (
+        "Rozmowy głosowe są dostępne codziennie w godzinach "
+        f"{VOICE_WINDOW_START_HOUR:02d}:00 - {VOICE_WINDOW_END_HOUR:02d}:00."
+    )
+
 
 @dataclass
 class QueueEntry:
