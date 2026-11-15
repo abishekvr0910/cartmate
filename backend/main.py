@@ -108,7 +108,7 @@ from config import (
 from auth_providers import otp_manager
 from sos_providers import sos_manager, verify_twilio_signature, verify_webhook_secret
 from storage import pilot_invite_hash, operator_activation_hash, storage, get_db_connection
-from voice_manager import VoiceCallManager
+from voice_manager import VoiceCallManager, voice_window_refusal_message
 from rate_limiter import rate_limiter
 from sanitizer import mask_phone, mask_token, mask_email, coarse_coordinates, apply_sanitized_logging
 
@@ -3484,7 +3484,7 @@ async def websocket_endpoint(
                 if status_res == "WINDOW_CLOSED":
                     await ws_manager.send_personal_message(
                         websocket,
-                        {"type": "error", "message": "Rozmowy głosowe są dostępne codziennie w godzinach 18:00 - 23:00."}
+                        {"type": "error", "message": voice_window_refusal_message()}
                     )
                 elif status_res == "ALREADY_IN_CALL":
                     await ws_manager.send_personal_message(
@@ -3924,7 +3924,7 @@ def get_voice_status(
     current_user: UserPrivateSchema = Depends(require_user),
 ):
     """
-    Returns daily voice call status, cooldown state, and evening schedule for current user.
+    Returns daily voice call status, cooldown state, and the effective voice-hours policy for current user.
     """
     daily_count = storage.get_daily_voice_call_count(current_user.id)
     sec_since_last = storage.get_seconds_since_last_voice_call(current_user.id)
@@ -3945,9 +3945,9 @@ def get_voice_status(
     is_in_queue = current_user.id in voice_call_manager.queue
     queue_topic = voice_call_manager.queue[current_user.id].topic if is_in_queue else None
 
-    # Scheduled window: 18:00 - 23:00 Polish Time
-    from voice_manager import is_voice_window_open
-    window_open = is_voice_window_open()
+    # Effective voice-hours policy: unrestricted, or an enforced 18:00 - 23:00 Warsaw window
+    from voice_manager import describe_voice_window
+    window_policy = describe_voice_window()
 
     icebreakers = [
         "Jak minął Ci dzisiejszy dzień?",
@@ -3965,8 +3965,7 @@ def get_voice_status(
         "is_in_queue": is_in_queue,
         "queue_topic": queue_topic,
         "active_call": active_call,
-        "window_open": window_open,
-        "window_schedule": "Codziennie 18:00 - 23:00",
+        **window_policy,
         "icebreakers": icebreakers,
         "ice_servers": voice_call_manager.get_ice_servers(current_user.id),
     }
