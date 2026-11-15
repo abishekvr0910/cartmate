@@ -621,3 +621,61 @@ def test_mr02_destination_probe_subprocess():
 
 
 
+
+
+def test_voice_window_fails_closed_when_timezone_unavailable(clean_db, monkeypatch):
+    """An enforced voice window must close, not open, when Warsaw time cannot be resolved."""
+    import zoneinfo
+
+    import voice_manager
+
+    def _timezone_database_missing(key):
+        raise zoneinfo.ZoneInfoNotFoundError(f"No time zone found with key {key}")
+
+    monkeypatch.setattr(zoneinfo, "ZoneInfo", _timezone_database_missing)
+
+    # Explicit enforcement flag (the closed-pilot staging switch).
+    monkeypatch.setenv("CARTMATE_VOICE_WINDOW_ENFORCED", "1")
+    assert voice_manager.is_voice_window_open() is False
+
+    # The queue entry point is the real boundary: no caller may be enqueued or matched.
+    status, call = asyncio.run(voice_call_manager.enqueue_caller("usr_zuzanna", "test", None))
+    assert status == "WINDOW_CLOSED"
+    assert call is None
+    assert "usr_zuzanna" not in voice_call_manager.queue
+
+    # Production enforces without the explicit flag.
+    monkeypatch.delenv("CARTMATE_VOICE_WINDOW_ENFORCED")
+    monkeypatch.setenv("CARTMATE_ENV", "production")
+    assert voice_manager.is_voice_window_open() is False
+
+    # Where the window is not enforced, missing timezone data does not close it.
+    monkeypatch.setenv("CARTMATE_ENV", "development")
+    assert voice_manager.is_voice_window_open() is True
+
+
+def test_voice_window_enforced_hours_follow_warsaw_time(monkeypatch):
+    """18:00-23:00 is evaluated in Europe/Warsaw; this also proves timezone data is installed."""
+    from zoneinfo import ZoneInfo
+
+    import voice_manager
+
+    warsaw = ZoneInfo("Europe/Warsaw")
+
+    class _FrozenDatetime(datetime):
+        frozen_at = None
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.frozen_at.astimezone(tz) if tz else cls.frozen_at
+
+    monkeypatch.setattr(voice_manager, "datetime", _FrozenDatetime)
+    monkeypatch.setenv("CARTMATE_VOICE_WINDOW_ENFORCED", "1")
+
+    for hour, expected in ((17, False), (18, True), (22, True), (23, False)):
+        _FrozenDatetime.frozen_at = datetime(2026, 11, 16, hour, 30, tzinfo=warsaw)
+        assert voice_manager.is_voice_window_open() is expected, f"Warsaw hour {hour}"
+
+    # 17:30 UTC in winter is 18:30 in Warsaw: the window follows Warsaw, not UTC.
+    _FrozenDatetime.frozen_at = datetime(2026, 11, 16, 17, 30, tzinfo=timezone.utc)
+    assert voice_manager.is_voice_window_open() is True

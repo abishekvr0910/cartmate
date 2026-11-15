@@ -16,6 +16,12 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Once dependencies are installed (DEPS_OK), later steps run even when an earlier
+    # check has failed, so one red suite no longer hides the probes, the image build or
+    # the image smoke test. Any failed step still fails the job. If a dependency install
+    # fails, the later steps are skipped so its error stays the only one in the log.
+    # Browser suites wait for a successful frontend build; the smoke test waits for a
+    # successfully built image.
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -41,6 +47,9 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Mark dependencies installed
+        run: echo "DEPS_OK=true" >> "$GITHUB_ENV"
+
       - name: Compile and test backend with isolated SQLite database
         working-directory: backend
         env:
@@ -54,25 +63,33 @@ jobs:
           python -m pytest -p no:cacheprovider -q
 
       - name: Exercise backup and offline restore drill
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' }}
         run: python -m pytest ops/test_disaster_recovery.py -p no:cacheprovider -q
 
       - name: Exercise operator preflight checks and contract tests
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' }}
         run: python -m pytest ops/test_pilot_preflight.py -p no:cacheprovider -q
 
       - name: Lint frontend
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' }}
         working-directory: frontend
         run: npm run lint
 
       - name: Typecheck and build frontend
+        id: frontend_build
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' }}
         working-directory: frontend
         run: npm run build
 
       - name: Install isolated browser-test dependencies
+        id: browser_deps
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' }}
         run: |
           npm ci --prefix qa
           npm exec --prefix qa -- playwright install --with-deps chromium
 
       - name: Run desktop and mobile browser journeys against disposable local database
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' && steps.frontend_build.outcome == 'success' && steps.browser_deps.outcome == 'success' }}
         env:
           CARTMATE_ENV: development
           CARTMATE_E2E_ISOLATED: '1'
@@ -97,32 +114,42 @@ jobs:
           npm --prefix qa test
 
       - name: Run no-demo staging-style browser journey on desktop and mobile
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' && steps.frontend_build.outcome == 'success' && steps.browser_deps.outcome == 'success' }}
         working-directory: qa
         run: npm run test:no-demo
 
       - name: Run operator-pilot staging browser journey on desktop and mobile
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' && steps.frontend_build.outcome == 'success' && steps.browser_deps.outcome == 'success' }}
         working-directory: qa
         run: npm run test:operator-pilot
 
       - name: Run independent private-pilot diagnostic probe
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' }}
         run: python qa/codex_private_pilot_probe.py
 
       - name: Run independent recovery-boundary diagnostic probe
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' }}
         run: python qa/codex_recovery_boundary_probe.py
 
       - name: Run independent client configuration diagnostic probe
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' }}
         run: node qa/codex_mvp_config_probe.cjs
 
       - name: Run independent real-API preflight diagnostic probe
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' }}
         run: python qa/codex_mvp_preflight_probe.py
 
       - name: Run independent reconnect missed-message diagnostic probe
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' }}
         run: node qa/codex_mvp_reconnect_probe.cjs
 
       - name: Build Render staging image
+        id: image
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' }}
         run: docker build --file Dockerfile --tag cartmate-staging-ci .
 
       - name: Smoke-test the built image (REST + WS)
+        if: ${{ !cancelled() && env.DEPS_OK == 'true' && steps.image.outcome == 'success' }}
         run: |
           set -euo pipefail
           docker run -d --name cartmate-smoke -p 127.0.0.1:8901:10000 \

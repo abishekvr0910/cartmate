@@ -1,5 +1,15 @@
 # CartMate — Comprehensive Engineering & Architecture Handoff
 
+**Update (2026-11-15, pilot-readiness hardening — branch `fix/pilot-readiness-hardening`; check `git log` and the pull request before assuming it is merged):** The matrix below is the 2026-11-13 state from another machine. On the founder's laptop the following was added and verified; see [the progress tracker](context/progress-tracker.md) for evidence.
+- Root pytest is now **254 passed**; the development browser suite is **50 passed** (was 49 passed / 1 failed, which is what made hosted CI red at `1402870`).
+- `qa/tests/safety-and-sos.spec.ts` asserts the voice screen heading rather than the cooldown-dependent connect label.
+- `.github/workflows/ci.yml` runs later steps after an earlier failure once dependencies are installed. Hosted CI passed on pull request #1 (all 22 steps, including the Docker build and smoke test); the run-after-failure path itself has not been observed because nothing failed.
+- `backend/voice_manager.py` fails closed when Europe/Warsaw is unavailable; `tzdata==2026.6` is pinned.
+- Migration **0016** withdraws the placeholder `verified_at` from the nine seeded Third Places; `GET /api/pods/places` returns verified places only; `ops/seed_third_places.py` exposes `seed_pilot_third_places` (renamed from `seed_verified_third_places`). A fresh database therefore has **no** verified venue until an operator records a visit or a moderator adds a place.
+- The QA harnesses resolve `backend/.venv`. On the founder's laptop that is a junction to a rebuilt `backend/venv`.
+- **Hazard:** importing `backend/storage.py` outside pytest without `CARTMATE_DATABASE_PATH` opens and migrates `backend/cartmate.db`. Always set the variable to a disposable path for ad-hoc scripts.
+- Founder decisions (2026-11-15, full list in the progress tracker): friends test first (three or more people), then about 100 people and the app stores; moderators are the founder plus one backup; voice hours stay unenforced on staging for the friends test; the nine seeded venues stay unverified and a moderator adds a place they have personally been to; automated monitoring is deferred to the 100-person stage.
+
 **Current status (2026-11-13, G0 + Phase 4 Complete — 276 distinct automated tests passed, 9 security probes exit 0):**
 The CartMate platform has completed full Phase 4 audit closure, test-suite database isolation, voice-manager security hardening, operator E2E stabilization, and Handy/FlowPilot voice architecture adaptation. Working tree is clean on branch `main` and synchronized with `origin/main` ([github.com/abishekvr0910/cartmate.git](https://github.com/abishekvr0910/cartmate.git)).
 

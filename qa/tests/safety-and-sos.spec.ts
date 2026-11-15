@@ -83,7 +83,10 @@ test.describe('Truthful Safety & SOS Disclosures Journey', () => {
     const voiceBtn = page.getByRole('button', { name: /Głos 10'|Voice 10'/i });
     await expect(voiceBtn).toBeVisible();
     await voiceBtn.click();
-    await expect(page.locator('text=/Rozmowy Głosowe|Połącz z kimś teraz/i').first()).toBeVisible({ timeout: 5000 });
+    // Assert the voice screen itself, not its connect button: that label legitimately reads
+    // "Przerwa: Ns" (cooldown) or a daily-limit notice once this user has taken a call, which
+    // pods-and-voice.spec.ts does earlier in the same run against the same disposable database.
+    await expect(page.getByRole('heading', { name: /10-Minutowe Rozmowy|10-Minute Voice/i })).toBeVisible({ timeout: 5000 });
     await expect(safetyNavBtn).toBeVisible();
   });
 });
