@@ -3,7 +3,7 @@
 **Update (2026-11-15, pilot-readiness hardening — branch `fix/pilot-readiness-hardening`; check `git log` and the pull request before assuming it is merged):** The matrix below is the 2026-11-13 state from another machine. On the founder's laptop the following was added and verified; see [the progress tracker](context/progress-tracker.md) for evidence.
 - Root pytest is now **254 passed**; the development browser suite is **50 passed** (was 49 passed / 1 failed, which is what made hosted CI red at `1402870`).
 - `qa/tests/safety-and-sos.spec.ts` asserts the voice screen heading rather than the cooldown-dependent connect label.
-- `.github/workflows/ci.yml` runs later steps after an earlier failure; not yet exercised on GitHub.
+- `.github/workflows/ci.yml` runs later steps after an earlier failure once dependencies are installed. Hosted CI passed on pull request #1 (all 22 steps, including the Docker build and smoke test); the run-after-failure path itself has not been observed because nothing failed.
 - `backend/voice_manager.py` fails closed when Europe/Warsaw is unavailable; `tzdata==2026.6` is pinned.
 - Migration **0016** withdraws the placeholder `verified_at` from the nine seeded Third Places; `GET /api/pods/places` returns verified places only; `ops/seed_third_places.py` exposes `seed_pilot_third_places` (renamed from `seed_verified_third_places`). A fresh database therefore has **no** verified venue until an operator records a visit or a moderator adds a place.
 - The QA harnesses resolve `backend/.venv`. On the founder's laptop that is a junction to a rebuilt `backend/venv`.
