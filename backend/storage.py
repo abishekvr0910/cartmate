@@ -2016,6 +2016,8 @@ class DurableStorage:
     def get_pod(self, pod_id: int) -> Optional[dict]:
         conn = get_db_connection(self.db_path)
         try:
+            # A pod opened directly must not read as forming after its deadline has passed.
+            self._cancel_expired_forming_pods(conn)
             cursor = conn.cursor()
             cursor.execute(
                 """
@@ -2076,16 +2078,8 @@ class DurableStorage:
         conn = get_db_connection(self.db_path)
         try:
             cursor = conn.cursor()
-            # Opportunistic sweep of expired forming pods
-            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            cursor.execute(
-                """
-                UPDATE pods
-                SET status = 'cancelled', cancelled_at = ?, cancel_reason = 'quorum_not_reached', updated_at = ?
-                WHERE status = 'forming' AND quorum_deadline_at <= ?;
-                """,
-                (now_str, now_str, now_str),
-            )
+            # Opportunistic sweep of expired forming pods, committed before the read
+            self._cancel_expired_forming_pods(conn)
             # Fetch blocked user IDs for viewer
             blocked_user_ids = set()
             if viewer_user_id:
@@ -2178,16 +2172,9 @@ class DurableStorage:
         conn = get_db_connection(self.db_path)
         try:
             cursor = conn.cursor()
-            # Opportunistic sweep of expired forming pods before join check
-            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            cursor.execute(
-                """
-                UPDATE pods
-                SET status = 'cancelled', cancelled_at = ?, cancel_reason = 'quorum_not_reached', updated_at = ?
-                WHERE status = 'forming' AND quorum_deadline_at <= ?;
-                """,
-                (now_str, now_str, now_str),
-            )
+            # Opportunistic sweep of expired forming pods before the join check. It is committed
+            # on its own, so a join that is rejected, already done or aborted cannot discard it.
+            self._cancel_expired_forming_pods(conn)
             # 1. Check if pod exists and is joinable
             cursor.execute("SELECT * FROM pods WHERE id = ?;", (pod_id,))
             pod = cursor.fetchone()
@@ -2403,22 +2390,30 @@ class DurableStorage:
         finally:
             conn.close()
 
+    @staticmethod
+    def _cancel_expired_forming_pods(conn: sqlite3.Connection, cutoff_time: Optional[str] = None) -> int:
+        """Cancels forming pods whose quorum deadline has passed and commits immediately.
+
+        Committing here keeps the cancellation when the calling request later returns early,
+        is rejected or raises, and releases the write lock before the caller reads.
+        """
+        now_str = cutoff_time or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cursor = conn.execute(
+            """
+            UPDATE pods
+            SET status = 'cancelled', cancelled_at = ?, cancel_reason = 'quorum_not_reached', updated_at = ?
+            WHERE status = 'forming' AND quorum_deadline_at <= ?;
+            """,
+            (now_str, now_str, now_str),
+        )
+        cancelled_count = cursor.rowcount
+        conn.commit()
+        return cancelled_count
+
     def cancel_unconfirmed_pods(self, cutoff_time: Optional[str] = None) -> int:
         conn = get_db_connection(self.db_path)
         try:
-            now_str = cutoff_time or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                UPDATE pods
-                SET status = 'cancelled', cancelled_at = ?, cancel_reason = 'quorum_not_reached', updated_at = ?
-                WHERE status = 'forming' AND quorum_deadline_at <= ?;
-                """,
-                (now_str, now_str, now_str),
-            )
-            cancelled_count = cursor.rowcount
-            conn.commit()
-            return cancelled_count
+            return self._cancel_expired_forming_pods(conn, cutoff_time)
         finally:
             conn.close()
 
